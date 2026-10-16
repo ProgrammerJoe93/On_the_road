@@ -1,6 +1,7 @@
 package com.joegineered.ontheroad.car
 
 import android.content.Intent
+import android.content.res.Configuration
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
@@ -18,12 +19,20 @@ class OtrCarAppService : CarAppService() {
 }
 
 class OtrCarSession : Session() {
+  private var navigationScreen: CarNavigationScreen? = null
+
+  override fun onCarConfigurationChanged(newConfiguration: Configuration) {
+    navigationScreen?.onCarConfigurationChanged()
+  }
+
   override fun onCreateScreen(intent: Intent): Screen {
     AppGraph.init(carContext)
     AppGraph.refreshLocationPermission()
     AppGraph.speedCameras.start()
     // Handles geo: and google.navigation: intents, e.g. from the Android Auto assistant.
     val destination = parseDestinationIntent(intent)
-    return CarNavigationScreen(carContext, initialDestination = destination)
+    return CarNavigationScreen(carContext, initialDestination = destination).also {
+      navigationScreen = it
+    }
   }
 }

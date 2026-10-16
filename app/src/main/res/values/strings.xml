@@ -16,6 +16,10 @@
     <string name="camera_warnings">Speed camera warnings</string>
     <string name="settings_menu">Settings</string>
     <string name="voice_guidance">Voice guidance</string>
+    <string name="night_mode">Night mode</string>
+    <string name="night_mode_auto">Automatic</string>
+    <string name="night_mode_day">Day</string>
+    <string name="night_mode_night">Night</string>
     <string name="arrived_title">You have arrived</string>
     <string name="arrival_summary">%1$s · %2$s</string>
     <string name="duration_minutes">%1$d min</string>

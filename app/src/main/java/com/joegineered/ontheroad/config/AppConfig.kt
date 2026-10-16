@@ -4,8 +4,11 @@ import com.joegineered.ontheroad.BuildConfig
 import java.util.Locale
 
 object AppConfig {
-  /** OpenFreeMap vector style; free and keyless. Data © OpenStreetMap contributors (ODbL). */
+  /** OpenFreeMap vector styles; free and keyless. Data © OpenStreetMap contributors (ODbL). */
   const val MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+  const val NIGHT_MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/fiord"
+
+  fun mapStyleUrl(night: Boolean) = if (night) NIGHT_MAP_STYLE_URL else MAP_STYLE_URL
 
   val valhallaUrl: String = BuildConfig.VALHALLA_URL
 

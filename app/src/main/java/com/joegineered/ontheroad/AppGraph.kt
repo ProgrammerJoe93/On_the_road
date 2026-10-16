@@ -3,6 +3,7 @@ package com.joegineered.ontheroad
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import androidx.core.content.ContextCompat
 import android.util.Log
 import com.joegineered.ontheroad.cameras.CameraAlertEngine
@@ -12,6 +13,7 @@ import com.joegineered.ontheroad.cameras.SpeedCameraController
 import com.joegineered.ontheroad.cameras.SpeedCameraRepository
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
+import com.joegineered.ontheroad.night.NightModeController
 import com.joegineered.ontheroad.search.PhotonGeocoder
 import com.joegineered.ontheroad.search.RecentDestinations
 import com.joegineered.ontheroad.settings.SettingsRepository
@@ -136,6 +138,18 @@ object AppGraph {
   val settings: SettingsRepository by lazy { SettingsRepository(appContext) }
 
   val geocoder: PhotonGeocoder by lazy { PhotonGeocoder(httpClient) }
+
+  val nightMode: NightModeController by lazy {
+    NightModeController(
+        settings = settings,
+        location = navigationViewModel.location,
+        systemDarkTheme = {
+          (appContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+              Configuration.UI_MODE_NIGHT_YES
+        },
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    )
+  }
 
   val recentDestinations: RecentDestinations by lazy { RecentDestinations(appContext) }
 

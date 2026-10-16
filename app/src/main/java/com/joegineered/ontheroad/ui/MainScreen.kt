@@ -50,6 +50,7 @@ import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.nav.RoutingStatus
+import com.joegineered.ontheroad.settings.ThemeMode
 import com.stadiamaps.ferrostar.composeui.config.NavigationViewComponentBuilder
 import com.stadiamaps.ferrostar.composeui.config.VisualNavigationViewConfig
 import com.stadiamaps.ferrostar.composeui.config.withCustomOverlayView
@@ -84,13 +85,14 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   val destination by viewModel.selectedDestination.collectAsState()
   val arrival by viewModel.arrival.collectAsState()
   val cameras by AppGraph.speedCameras.cameras.collectAsState()
+  val night by AppGraph.nightMode.isNight.collectAsState()
   val navigationMapState = rememberNavigationMapState()
   // Kept at screen level so the menu state lives as long as the screen, not the overlay slot.
   val settingsMenuOpen = remember { mutableStateOf(false) }
 
   DynamicallyOrientingNavigationView(
       modifier = Modifier.fillMaxSize(),
-      baseStyle = BaseStyle.Uri(AppConfig.MAP_STYLE_URL),
+      baseStyle = BaseStyle.Uri(AppConfig.mapStyleUrl(night)),
       navigationMapState = navigationMapState,
       viewModel = viewModel,
       config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
@@ -243,6 +245,7 @@ private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<B
   val simulated by viewModel.simulated.collectAsState()
   val camerasEnabled by AppGraph.settings.cameraWarningsEnabled.collectAsState(initial = false)
   val voiceEnabled by AppGraph.settings.voiceGuidanceEnabled.collectAsState(initial = true)
+  val themeMode by AppGraph.settings.themeMode.collectAsState(initial = ThemeMode.AUTO)
   val scope = rememberCoroutineScope()
   var expanded by open
 
@@ -254,6 +257,27 @@ private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<B
       )
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+      DropdownMenuItem(
+          text = { Text(stringResource(R.string.night_mode)) },
+          // Tapping cycles Automatic -> Day -> Night.
+          onClick = {
+            val next = ThemeMode.entries[(themeMode.ordinal + 1) % ThemeMode.entries.size]
+            scope.launch { AppGraph.settings.setThemeMode(next) }
+          },
+          trailingIcon = {
+            Text(
+                stringResource(
+                    when (themeMode) {
+                      ThemeMode.AUTO -> R.string.night_mode_auto
+                      ThemeMode.DAY -> R.string.night_mode_day
+                      ThemeMode.NIGHT -> R.string.night_mode_night
+                    }
+                ),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 16.dp),
+            )
+          },
+      )
       ToggleMenuItem(stringResource(R.string.voice_guidance), voiceEnabled) { enabled ->
         scope.launch { AppGraph.settings.setVoiceGuidanceEnabled(enabled) }
       }

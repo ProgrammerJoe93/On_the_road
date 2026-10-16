@@ -4,6 +4,7 @@ import android.content.Context
 import android.telephony.TelephonyManager
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,16 @@ class SettingsRepository(private val context: Context) {
     context.dataStore.edit { it[VOICE_GUIDANCE] = enabled }
   }
 
+  /** Day/night colours for the map and UI. */
+  val themeMode: Flow<ThemeMode> =
+      context.dataStore.data.map { prefs ->
+        prefs[THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.AUTO
+      }
+
+  suspend fun setThemeMode(mode: ThemeMode) {
+    context.dataStore.edit { it[THEME_MODE] = mode.name }
+  }
+
   suspend fun setCameraWarningsEnabled(enabled: Boolean) {
     context.dataStore.edit { it[CAMERA_WARNINGS] = enabled }
   }
@@ -44,6 +55,7 @@ class SettingsRepository(private val context: Context) {
   companion object {
     private val CAMERA_WARNINGS = booleanPreferencesKey("camera_warnings")
     private val VOICE_GUIDANCE = booleanPreferencesKey("voice_guidance")
+    private val THEME_MODE = stringPreferencesKey("theme_mode")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This
@@ -54,4 +66,12 @@ class SettingsRepository(private val context: Context) {
     fun cameraWarningsAllowedByDefault(countryCode: String): Boolean =
         countryCode.uppercase(Locale.ROOT) !in CAMERA_WARNING_RESTRICTED_COUNTRIES
   }
+}
+
+/** How the app picks day or night colours. */
+enum class ThemeMode {
+  /** Night between sunset and sunrise at the current location (phone); the car's signal in Android Auto. */
+  AUTO,
+  DAY,
+  NIGHT,
 }

@@ -14,6 +14,9 @@ import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +35,7 @@ import com.joegineered.ontheroad.cameras.CameraWarning
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.nav.Arrival
 import com.joegineered.ontheroad.nav.Destination
+import com.joegineered.ontheroad.settings.ThemeMode
 import com.joegineered.ontheroad.ui.arrivalSummary
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
 import com.joegineered.ontheroad.ui.formatDistance
@@ -91,6 +95,10 @@ class CarNavigationScreen(
       )
 
   private var uiState: NavigationUiState? by mutableStateOf(null)
+
+  /** The car's day/night signal (headlights or the car clock); updated on configuration change. */
+  private var carDarkMode by mutableStateOf(carContext.isDarkMode)
+  private var themeMode by mutableStateOf(ThemeMode.AUTO)
   private var navigationMapState: NavigationMapState? = null
   private var browsingPadding: PaddingValues = PaddingValues()
   private val surfaceAreaTracker = SurfaceAreaTracker { surfaceGestureCallback = it }
@@ -107,6 +115,7 @@ class CarNavigationScreen(
 
     AppGraph.speedCameras.announcements.onEach(::showCameraAlert).launchIn(scope)
     viewModel.arrival.onEach { invalidate() }.launchIn(scope)
+    AppGraph.settings.themeMode.onEach { themeMode = it }.launchIn(scope)
 
     initialDestination?.location?.let { location ->
       viewModel.startNavigation(
@@ -127,8 +136,28 @@ class CarNavigationScreen(
     )
   }
 
+  /** Called by the session when the car switches between day and night. */
+  fun onCarConfigurationChanged() {
+    carDarkMode = carContext.isDarkMode
+  }
+
+  private val night: Boolean
+    get() =
+        when (themeMode) {
+          ThemeMode.AUTO -> carDarkMode
+          ThemeMode.DAY -> false
+          ThemeMode.NIGHT -> true
+        }
+
   @Composable
   override fun content() {
+    MaterialTheme(colorScheme = if (night) darkColorScheme() else lightColorScheme()) {
+      CarMap()
+    }
+  }
+
+  @Composable
+  private fun CarMap() {
     val surfaceArea by screenSurfaceState(surfaceAreaTracker)
     val normalPadding = surfaceStableFractionalPadding(surfaceArea?.compositeArea)
     val trackingPadding = surfaceStableFractionalPadding(surfaceArea?.compositeArea, top = 0.5f)
@@ -148,7 +177,7 @@ class CarNavigationScreen(
 
     CarAppNavigationView(
         modifier = Modifier.fillMaxSize(),
-        styleUrl = AppConfig.MAP_STYLE_URL,
+        styleUrl = AppConfig.mapStyleUrl(night),
         navigationMapState = mapState,
         navigationCameraOptions = cameraOptions,
         viewModel = viewModel,
