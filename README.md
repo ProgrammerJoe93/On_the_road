@@ -17,6 +17,11 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - a camera is matched to the route by its distance from the route and its direction;
   - cameras on parallel and crossing roads are rejected;
   - a chime, a spoken warning and an on-screen badge, plus a car alert in Android Auto.
+- **Live traffic (Finland):** from Fintraffic's open Digitraffic service:
+  - accidents, closures and roadworks on the map, with Finnish details and English summaries;
+  - slow traffic at measuring stations;
+  - spoken warnings for events on your route;
+  - routes avoid closed roads.
 - **Android Auto:**
   - the MapLibre map on the car screen;
   - Ferrostar's `NavigationTemplate`;
@@ -120,5 +125,6 @@ On the Road is released under the BSD 3-Clause License; see [LICENSE](LICENSE).
 | Valhalla | MIT |
 | AndroidX Car App Library | Apache-2.0 |
 
-Map data, routing data and speed camera data are © OpenStreetMap contributors (ODbL). The map's
-attribution button must stay visible.
+Map data, routing data, speed camera and EV charger data are © OpenStreetMap contributors
+(ODbL); the map's attribution button must stay visible. Live traffic data is from Fintraffic /
+digitraffic.fi, licensed CC BY 4.0, and is credited on each traffic card.

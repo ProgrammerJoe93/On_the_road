@@ -250,6 +250,13 @@ class OtrNavigationViewModel(
     }
   }
 
+  /** Plans a new route to the current destination, e.g. around a newly reported closure. */
+  fun rerouteToActiveDestination() {
+    val destination = activeDestination ?: return
+    if (!navigationUiState.value.isNavigating()) return
+    startNavigation(destination)
+  }
+
   override fun stopNavigation() {
     endSession()
   }

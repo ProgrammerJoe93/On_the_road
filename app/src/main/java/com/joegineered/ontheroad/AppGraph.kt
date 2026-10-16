@@ -16,6 +16,10 @@ import com.joegineered.ontheroad.chargers.ChargerController
 import com.joegineered.ontheroad.chargers.ChargerRepository
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
+import com.joegineered.ontheroad.nav.TrafficAwareRouteProvider
+import com.joegineered.ontheroad.traffic.DigitrafficClient
+import com.joegineered.ontheroad.traffic.TrafficController
+import com.joegineered.ontheroad.traffic.trafficAnnouncement
 import com.joegineered.ontheroad.night.NightModeController
 import com.joegineered.ontheroad.search.PhotonGeocoder
 import com.joegineered.ontheroad.search.RecentDestinations
@@ -34,7 +38,6 @@ import com.stadiamaps.ferrostar.core.http.OkHttpClientProvider.Companion.toOkHtt
 import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
 import com.stadiamaps.ferrostar.core.location.SimulatedLocationProvider
 import com.stadiamaps.ferrostar.core.service.FerrostarForegroundServiceManager
-import com.stadiamaps.ferrostar.core.withJsonOptions
 import com.stadiamaps.ferrostar.googleplayservices.FusedNavigationLocationProvider
 import java.time.Duration
 import okhttp3.OkHttpClient
@@ -42,7 +45,6 @@ import uniffi.ferrostar.CourseFiltering
 import uniffi.ferrostar.NavigationControllerConfig
 import uniffi.ferrostar.RouteDeviationTracking
 import uniffi.ferrostar.WaypointAdvanceMode
-import uniffi.ferrostar.WellKnownRouteProvider
 import uniffi.ferrostar.stepAdvanceDistanceEntryAndExit
 import uniffi.ferrostar.stepAdvanceDistanceToEndOfStep
 
@@ -112,9 +114,15 @@ object AppGraph {
             "language" to AppConfig.instructionLanguage(),
             "units" to if (AppConfig.usesMetricUnits) "kilometers" else "miles",
         )
+    // Valhalla, avoiding roads that live traffic reports as closed.
     val routeProvider =
-        WellKnownRouteProvider.Valhalla(AppConfig.valhallaUrl, AppConfig.VALHALLA_COSTING)
-            .withJsonOptions(options)
+        TrafficAwareRouteProvider(
+            endpoint = AppConfig.valhallaUrl,
+            profile = AppConfig.VALHALLA_COSTING,
+            baseOptions = options,
+            httpClient = httpClient.toOkHttpClientProvider(),
+            closures = { traffic.closures() },
+        )
 
     FerrostarCore(
             routeProvider,
@@ -148,6 +156,31 @@ object AppGraph {
 
   val chargers: ChargerController by lazy {
     ChargerController(ChargerRepository(overpass), CoroutineScope(SupervisorJob() + Dispatchers.IO))
+  }
+
+  val traffic: TrafficController by lazy {
+    TrafficController(
+        client = DigitrafficClient(httpClient),
+        settings = settings,
+        navigationState = ferrostarCore.state,
+        announce = { warning -> voice.announce(trafficAnnouncement(appContext, warning)) },
+    )
+  }
+
+  private var trafficStarted = false
+
+  /** Starts live traffic refreshes and rerouting around closures found on the active route. */
+  @Synchronized
+  fun startTraffic() {
+    if (trafficStarted) return
+    trafficStarted = true
+    traffic.start()
+    CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+      traffic.closureOnRoute.collect {
+        voice.announce(appContext.getString(R.string.rerouting_closure))
+        navigationViewModel.rerouteToActiveDestination()
+      }
+    }
   }
 
   val nightMode: NightModeController by lazy {

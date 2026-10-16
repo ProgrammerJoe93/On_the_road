@@ -5,6 +5,7 @@ import com.joegineered.ontheroad.cameras.OverpassCache
 import com.joegineered.ontheroad.cameras.distanceMetres
 import android.util.Log
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.coroutines.cancellation.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.async
@@ -41,11 +42,17 @@ class ChargerRepository(private val overpass: OverpassCache) {
    * The nearest chargers within [NEARBY_RADIUS_METRES] of [position], with one Overpass query. The
    * position is rounded to about 2 km so the cached answer is reused while moving around.
    */
-  suspend fun nearest(position: LatLng, limit: Int = 20, fastOnly: Boolean = false): List<Pair<ChargingStation, Double>> {
+  suspend fun nearest(
+      position: LatLng,
+      limit: Int = 20,
+      fastOnly: Boolean = false,
+      plugTypes: Set<SocketType> = SocketType.entries.toSet(),
+  ): List<Pair<ChargingStation, Double>> {
     val anchor = LatLng(round(position.lat, 0.02), round(position.lng, 0.04))
     return parse(overpass.query(nearbyQuery(anchor)))
-        .filter { !fastOnly || it.isFast }
+        .filter { (!fastOnly || it.isFast) && it.matches(plugTypes) }
         .map { it to distanceMetres(position, it.position) }
+        .filter { it.second <= NEARBY_RADIUS_METRES }
         .sortedBy { it.second }
         .take(limit)
   }
@@ -77,12 +84,20 @@ class ChargerRepository(private val overpass: OverpassCache) {
     private const val MAX_TILES = 6
     const val NEARBY_RADIUS_METRES = 15_000
 
-    fun nearbyQuery(around: LatLng): String =
-        String.format(
-            Locale.ROOT,
-            "[out:json][timeout:60];nwr[amenity=charging_station](around:%d,%.4f,%.4f);out center tags;",
-            NEARBY_RADIUS_METRES, around.lat, around.lng,
-        )
+    /**
+     * A bounding box around [around] that contains the [NEARBY_RADIUS_METRES] circle. Overpass
+     * evaluates a bounding box far more cheaply than an `around` filter, which matters on the
+     * rate-limited public servers; results are trimmed to the circle afterwards.
+     */
+    fun nearbyQuery(around: LatLng): String {
+      val dLat = NEARBY_RADIUS_METRES / 111_195.0
+      val dLng = dLat / cos(Math.toRadians(around.lat))
+      return String.format(
+          Locale.ROOT,
+          "[out:json][timeout:60];nwr[amenity=charging_station](%.4f,%.4f,%.4f,%.4f);out center tags;",
+          around.lat - dLat, around.lng - dLng, around.lat + dLat, around.lng + dLng,
+      )
+    }
 
     fun query(tile: Tile): String =
         String.format(

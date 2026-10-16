@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for a traffic incident: white "!" on a red warning triangle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="28dp" android:viewportWidth="30" android:viewportHeight="28">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M15,0.5L29.5,26.5H0.5z" />
+    <path android:fillColor="#FFD32F2F" android:pathData="M15,4L26.4,24.5H3.6z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M13.6,10h2.8l-0.5,8h-1.8zM15,19.6a1.5,1.5 0,1 1,-0.001 0z" />
+</vector>

@@ -29,6 +29,7 @@ class OtrCarSession : Session() {
     AppGraph.init(carContext)
     AppGraph.refreshLocationPermission()
     AppGraph.speedCameras.start()
+    AppGraph.startTraffic()
     // Handles geo: and google.navigation: intents, e.g. from the Android Auto assistant.
     val destination = parseDestinationIntent(intent)
     return CarNavigationScreen(carContext, initialDestination = destination).also {

@@ -29,7 +29,7 @@ class ChargerParsingTest {
     assertEquals(50.0, station.maxPowerKw!!, 0.0)
     assertTrue(station.isFast)
     assertTrue(station.hasCcs)
-    assertEquals("CCS 50 kW", station.headline)
+    assertEquals("CCS2 50 kW", station.headline)
     val type2 = station.sockets.single { it.type == SocketType.TYPE2 }
     assertEquals(3, type2.count)
     assertEquals(22.0, type2.outputKw!!, 0.0)
@@ -95,5 +95,62 @@ class ChargerParsingTest {
     val covering = Tile.covering(60.10, 24.80, 60.25, 25.10, 10)
     assertTrue(covering.contains(tile))
     assertTrue(covering.size in 2..6)
+  }
+
+  @Test
+  fun `plug filter matches stations with a selected plug`() {
+    val helenStation = chargingStationFromTags("node/1", here, helen)!!
+    val acOnly = chargingStationFromTags("node/2", here, mapOf("socket:type2" to "2"))!!
+    val unknown = chargingStationFromTags("node/3", here, mapOf("operator" to "Virta"))!!
+
+    val ccsOnly = setOf(SocketType.CCS2)
+    assertTrue(helenStation.matches(ccsOnly))
+    assertFalse(acOnly.matches(ccsOnly))
+    assertFalse(unknown.matches(ccsOnly))
+
+    val all = SocketType.entries.toSet()
+    assertTrue(acOnly.matches(all))
+    assertTrue(unknown.matches(all)) // no plug details: shown only with every type selected
+  }
+
+  @Test
+  fun `North American and Tesla plugs map to their own types`() {
+    val station =
+        chargingStationFromTags(
+            "node/9",
+            here,
+            mapOf(
+                "socket:type1_combo" to "2", "socket:type1_combo:output" to "150 kW",
+                "socket:type1" to "4", "socket:nacs" to "8",
+                "socket:tesla_supercharger_ccs" to "6",
+            ),
+        )!!
+
+    val types = station.sockets.map { it.type }.toSet()
+    assertEquals(
+        setOf(SocketType.CCS1, SocketType.TYPE1, SocketType.TESLA, SocketType.CCS2),
+        types,
+    )
+    // A European Supercharger open to other cars counts as CCS2, so an ID.3 filter keeps it.
+    assertTrue(station.matches(setOf(SocketType.CCS2)))
+    assertFalse(chargingStationFromTags("node/10", here, mapOf("socket:type1" to "2"))!!.isFast)
+  }
+
+  @Test
+  fun `household, campsite and other regional sockets map to their groups`() {
+    fun typesOf(vararg keys: String) =
+        chargingStationFromTags("node/x", here, keys.associate { "socket:$it" to "1" })!!
+            .sockets.map { it.type }.toSet()
+
+    assertEquals(setOf(SocketType.SCHUKO), typesOf("schuko", "typee"))
+    assertEquals(setOf(SocketType.HOUSEHOLD_OTHER), typesOf("bs1363", "nema_5_15", "as3112"))
+    assertEquals(setOf(SocketType.CEE_BLUE, SocketType.CEE_RED), typesOf("cee_blue", "cee_red_32a"))
+    assertEquals(setOf(SocketType.TYPE1), typesOf("type1_cable"))
+  }
+
+  @Test
+  fun `GB T is fast only with a DC socket`() {
+    assertTrue(chargingStationFromTags("node/1", here, mapOf("socket:gb_dc" to "2"))!!.isFast)
+    assertFalse(chargingStationFromTags("node/2", here, mapOf("socket:gb_ac" to "2"))!!.isFast)
   }
 }

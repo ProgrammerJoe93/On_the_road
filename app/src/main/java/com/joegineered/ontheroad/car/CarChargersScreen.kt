@@ -19,6 +19,7 @@ import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.chargers.ChargingStation
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.ui.formatTripDistance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import uniffi.ferrostar.GeographicCoordinate
 
@@ -46,7 +47,8 @@ class CarChargersScreen(carContext: CarContext) : Screen(carContext) {
       if (here == null) {
         failed = true
       } else {
-        runCatching { AppGraph.chargers.nearest(LatLng(here.lat, here.lng), fastOnly) }
+        val plugTypes = AppGraph.settings.chargerPlugTypes.first()
+        runCatching { AppGraph.chargers.nearest(LatLng(here.lat, here.lng), fastOnly, plugTypes) }
             .onSuccess { results = it }
             .onFailure { failed = true }
       }

@@ -5,6 +5,8 @@ import android.telephony.TelephonyManager
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.joegineered.ontheroad.chargers.SocketType
 import androidx.datastore.preferences.preferencesDataStore
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +50,27 @@ class SettingsRepository(private val context: Context) {
     context.dataStore.edit { it[SHOW_CHARGERS] = show }
   }
 
+  /**
+   * Plug types to show chargers for. "All types" is stored as no filter at all, so plug types
+   * added in later versions are included automatically.
+   */
+  val chargerPlugTypes: Flow<Set<SocketType>> =
+      context.dataStore.data.map { prefs -> decodePlugTypes(prefs[CHARGER_PLUG_TYPES]) }
+
+  suspend fun setChargerPlugTypes(types: Set<SocketType>) {
+    context.dataStore.edit { prefs ->
+      if (types.containsAll(SocketType.entries)) prefs.remove(CHARGER_PLUG_TYPES)
+      else prefs[CHARGER_PLUG_TYPES] = types.map { it.name }.toSet()
+    }
+  }
+
+  /** Live traffic from Fintraffic (Finland): incidents, roadworks, slow traffic, closures avoided. */
+  val liveTrafficEnabled: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[LIVE_TRAFFIC] ?: true }
+
+  suspend fun setLiveTrafficEnabled(enabled: Boolean) {
+    context.dataStore.edit { it[LIVE_TRAFFIC] = enabled }
+  }
+
   suspend fun setCameraWarningsEnabled(enabled: Boolean) {
     context.dataStore.edit { it[CAMERA_WARNINGS] = enabled }
   }
@@ -64,12 +87,25 @@ class SettingsRepository(private val context: Context) {
     private val VOICE_GUIDANCE = booleanPreferencesKey("voice_guidance")
     private val THEME_MODE = stringPreferencesKey("theme_mode")
     private val SHOW_CHARGERS = booleanPreferencesKey("show_chargers")
+    private val LIVE_TRAFFIC = booleanPreferencesKey("live_traffic")
+    private val CHARGER_PLUG_TYPES = stringSetPreferencesKey("charger_plug_types")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This
      * list is a conservative default, not legal advice; review it before release.
      */
     val CAMERA_WARNING_RESTRICTED_COUNTRIES = setOf("DE", "CH", "FR", "AT")
+
+    /** Reads stored plug types; "CCS" was the name of CCS2 before CCS1 was added. */
+    fun decodePlugTypes(stored: Set<String>?): Set<SocketType> {
+      val types =
+          stored
+              ?.mapNotNull { name ->
+                if (name == "CCS") SocketType.CCS2 else SocketType.entries.firstOrNull { it.name == name }
+              }
+              ?.toSet()
+      return if (types.isNullOrEmpty()) SocketType.entries.toSet() else types
+    }
 
     fun cameraWarningsAllowedByDefault(countryCode: String): Boolean =
         countryCode.uppercase(Locale.ROOT) !in CAMERA_WARNING_RESTRICTED_COUNTRIES

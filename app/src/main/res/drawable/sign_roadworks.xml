@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Roadworks warning sign in the Finnish style (A11 "Tietyö"): red-bordered yellow triangle with
+  a worker shovelling. Simplified pictogram.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="57dp" android:viewportWidth="64" android:viewportHeight="57">
+    <!-- White outer edge, red border, yellow field -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M32,0.5L63.5,56.5H0.5z" />
+    <path android:fillColor="#FFD32F2F" android:pathData="M32,3.5L60.7,54.5H3.3z" />
+    <path android:fillColor="#FFFFC400" android:pathData="M32,12L52.6,49.5H11.4z" />
+    <!-- Worker: head, body, legs, arms with shovel, and a heap -->
+    <path android:fillColor="#FF000000" android:pathData="M30.5,24.5a2.6,2.6 0,1 0,0.001 0z" />
+    <path android:strokeColor="#FF000000" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M29.2,29.5L27,37.5M27,37.5L24.5,45M27,37.5L30.5,45M28.8,31L34.5,34.5M34.5,34.5L40.5,43" />
+    <path android:fillColor="#FF000000" android:pathData="M38.5,45.5h9.5l-3.5,-4.5z" />
+</vector>

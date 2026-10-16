@@ -37,11 +37,16 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.cameras.CameraWarning
 import com.joegineered.ontheroad.config.AppConfig
+import com.joegineered.ontheroad.chargers.SocketType
 import com.joegineered.ontheroad.nav.Arrival
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.settings.ThemeMode
 import com.joegineered.ontheroad.ui.arrivalSummary
+import com.joegineered.ontheroad.traffic.TrafficWarning
+import com.joegineered.ontheroad.traffic.labelRes
 import com.joegineered.ontheroad.ui.ChargerLayer
+import com.joegineered.ontheroad.ui.TrafficLayer
+import com.joegineered.ontheroad.ui.RoadSigns
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
 import com.joegineered.ontheroad.ui.Speedometer
 import com.joegineered.ontheroad.ui.speedReading
@@ -123,6 +128,7 @@ class CarNavigationScreen(
         .launchIn(scope)
 
     AppGraph.speedCameras.announcements.onEach(::showCameraAlert).launchIn(scope)
+    AppGraph.traffic.announcements.onEach(::showTrafficAlert).launchIn(scope)
     viewModel.arrival.onEach { invalidate() }.launchIn(scope)
     AppGraph.settings.themeMode.onEach { themeMode = it }.launchIn(scope)
 
@@ -177,6 +183,10 @@ class CarNavigationScreen(
     val cameras by AppGraph.speedCameras.cameras.collectAsState()
     val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
     val chargers by AppGraph.chargers.visible.collectAsState()
+    val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
+    val liveTraffic by AppGraph.settings.liveTrafficEnabled.collectAsState(initial = true)
+    val trafficEvents by AppGraph.traffic.events.collectAsState()
+    val slowTraffic by AppGraph.traffic.slowTraffic.collectAsState()
 
     browsingPadding = normalPadding
     navigationMapState = mapState
@@ -205,17 +215,26 @@ class CarNavigationScreen(
           navigationMapState = mapState,
           navigationCameraOptions = cameraOptions,
           viewModel = viewModel,
-          config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
+          // The speed limit sign is drawn below by RoadSigns, with the roadworks sign beside it.
+          config = VisualNavigationViewConfig.Default(),
           surfaceAreaTracker = surfaceAreaTracker,
       ) { _ ->
-        if (showChargers) ChargerLayer(chargers)
+        if (liveTraffic) TrafficLayer(trafficEvents, slowTraffic)
+        if (showChargers) ChargerLayer(chargers.filter { it.matches(plugTypes) })
         SpeedCameraLayer(cameras)
       }
 
-      // Current speed, bottom left inside the area the car's navigation UI leaves visible.
+      // Road signs top left and current speed bottom left, inside the area the car's navigation
+      // UI leaves visible.
       if (uiState?.isNavigating() == true) {
         val speed by viewModel.speedMetresPerSecond.collectAsState()
+        val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
         Box(Modifier.fillMaxSize().padding(normalPadding).padding(8.dp)) {
+          RoadSigns(
+              speedLimit = uiState?.currentAnnotation?.speedLimit,
+              roadworks = roadworks != null,
+              modifier = Modifier.align(Alignment.TopStart),
+          )
           Speedometer(
               reading =
                   speedReading(
@@ -329,6 +348,26 @@ class CarNavigationScreen(
             .apply {
               warning.camera.maxSpeedKmh?.let { setSubtitle(CarText.create("$it")) }
             }
+            .build()
+    carContext.getCarService(AppManager::class.java).showAlert(alert)
+  }
+
+  /** Shows a traffic warning (e.g. "Roadworks in 1.5 km") as a car alert (Car App API 5+). */
+  private fun showTrafficAlert(warning: TrafficWarning) {
+    if (carContext.carAppApiLevel < 5) return
+    val title =
+        CarText.create(
+            carContext.getString(
+                R.string.traffic_ahead_in,
+                carContext.getString(warning.event.kind.labelRes()),
+                formatDistance(warning.distanceMetres),
+            )
+        )
+    val icon = CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_traffic)).build()
+    val alert =
+        Alert.Builder(warning.event.id.hashCode(), title, CAMERA_ALERT_DURATION_MS)
+            .setIcon(icon)
+            .apply { warning.event.restrictions.firstOrNull()?.let { setSubtitle(CarText.create(it)) } }
             .build()
     carContext.getCarService(AppManager::class.java).showAlert(alert)
   }

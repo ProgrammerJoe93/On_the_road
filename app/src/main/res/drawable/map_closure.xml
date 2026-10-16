@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for a closed road: white bar on a red disc (no entry). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp" android:height="28dp" android:viewportWidth="28" android:viewportHeight="28">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M14,0.5a13.5,13.5 0,1 0,0.001 0z" />
+    <path android:fillColor="#FFD32F2F" android:pathData="M14,2.6a11.4,11.4 0,1 0,0.001 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M6.5,12h15v4h-15z" />
+</vector>

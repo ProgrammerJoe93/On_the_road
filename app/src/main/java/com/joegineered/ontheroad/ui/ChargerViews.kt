@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,7 +72,7 @@ fun ChargerCard(
       }
 
       station.sockets
-          .sortedWith(compareByDescending<com.joegineered.ontheroad.chargers.Socket> { it.type.dc }
+          .sortedWith(compareByDescending<com.joegineered.ontheroad.chargers.Socket> { it.dc }
               .thenByDescending { it.outputKw ?: 0.0 })
           .forEach { socket ->
             Text(
@@ -82,8 +83,8 @@ fun ChargerCard(
                     )
                     .joinToString("  "),
                 // Your car's fast-charging plug stands out.
-                fontWeight = if (socket.type == SocketType.CCS) FontWeight.Bold else FontWeight.Normal,
-                color = if (socket.type == SocketType.CCS) ChargerGreen else Color.Unspecified,
+                fontWeight = if (socket.type == SocketType.CCS2) FontWeight.Bold else FontWeight.Normal,
+                color = if (socket.type == SocketType.CCS2) ChargerGreen else Color.Unspecified,
             )
           }
 
@@ -121,13 +122,14 @@ fun NearbyChargersCard(
   var results by remember { mutableStateOf<List<Pair<ChargingStation, Double>>?>(null) }
   var failed by remember { mutableStateOf(false) }
   var attempt by remember { mutableStateOf(0) }
+  val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
 
-  LaunchedEffect(position == null, fastOnly, attempt) {
+  LaunchedEffect(position == null, fastOnly, attempt, plugTypes) {
     position ?: return@LaunchedEffect
     results = null
     failed = false
     results =
-        runCatching { AppGraph.chargers.nearest(position, fastOnly) }
+        runCatching { AppGraph.chargers.nearest(position, fastOnly, plugTypes) }
             .onFailure { failed = true }
             .getOrDefault(emptyList())
   }

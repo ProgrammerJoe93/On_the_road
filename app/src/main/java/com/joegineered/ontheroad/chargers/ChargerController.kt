@@ -45,8 +45,12 @@ class ChargerController(
         }
   }
 
-  suspend fun nearest(position: LatLng, fastOnly: Boolean): List<Pair<ChargingStation, Double>> =
-      repository.nearest(position, limit = 20, fastOnly = fastOnly).also { results ->
+  suspend fun nearest(
+      position: LatLng,
+      fastOnly: Boolean,
+      plugTypes: Set<SocketType>,
+  ): List<Pair<ChargingStation, Double>> =
+      repository.nearest(position, limit = 20, fastOnly = fastOnly, plugTypes = plugTypes).also { results ->
         synchronized(known) { results.forEach { (station, _) -> known[station.id] = station } }
       }
 

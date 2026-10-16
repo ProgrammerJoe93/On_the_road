@@ -38,7 +38,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
+import com.stadiamaps.ferrostar.composeui.config.withInstructionsView
+import com.stadiamaps.ferrostar.composeui.views.components.InstructionsView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpSize
@@ -50,6 +57,7 @@ import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.chargers.ChargingStation
+import com.joegineered.ontheroad.chargers.SocketType
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.nav.RoutingStatus
@@ -89,7 +97,10 @@ fun signageStyle(): SignageStyle =
 fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel) {
   KeepScreenOnDisposableEffect()
   LocationPermissionEffect(viewModel)
-  LaunchedEffect(Unit) { AppGraph.speedCameras.start() }
+  LaunchedEffect(Unit) {
+    AppGraph.speedCameras.start()
+    AppGraph.startTraffic()
+  }
 
   val uiState by viewModel.navigationUiState.collectAsState()
   val destination by viewModel.selectedDestination.collectAsState()
@@ -98,67 +109,115 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   val night by AppGraph.nightMode.isNight.collectAsState()
   val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
   val chargers by AppGraph.chargers.visible.collectAsState()
+  val liveTraffic by AppGraph.settings.liveTrafficEnabled.collectAsState(initial = true)
+  val trafficEvents by AppGraph.traffic.events.collectAsState()
+  val slowTraffic by AppGraph.traffic.slowTraffic.collectAsState()
   val navigationMapState = rememberNavigationMapState()
   ChargerViewportEffect(navigationMapState, enabled = showChargers)
-  // Kept at screen level so the menu state lives as long as the screen, not the overlay slot.
-  val settingsMenuOpen = remember { mutableStateOf(false) }
+  var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
+  // Bottom edge of the turn banner (root coordinates), to place the road signs right below it.
+  val bannerBottom = remember { mutableStateOf<Float?>(null) }
+  val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
 
-  DynamicallyOrientingNavigationView(
-      modifier = Modifier.fillMaxSize(),
-      baseStyle = BaseStyle.Uri(AppConfig.mapStyleUrl(night)),
-      navigationMapState = navigationMapState,
-      viewModel = viewModel,
-      config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
-      views =
-          NavigationViewComponentBuilder.Default()
-              // Current speed sits just above the trip progress bar, bottom left.
-              .withProgressView { modifier, state, onTapExit ->
-                state.progress?.let { progress ->
-                  val speed by viewModel.speedMetresPerSecond.collectAsState()
-                  Column(modifier) {
-                    Speedometer(
-                        reading =
-                            speedReading(
-                                speed,
-                                state.currentAnnotation?.speedLimit,
-                                AppConfig.usesMetricUnits,
-                            ),
-                        metric = AppConfig.usesMetricUnits,
-                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
-                    )
-                    TripProgressView(
-                        theme = DefaultNavigationUITheme.tripProgressViewTheme,
-                        progress = progress,
-                        onTapExit = onTapExit,
+  Box(Modifier.fillMaxSize()) {
+    DynamicallyOrientingNavigationView(
+        modifier = Modifier.fillMaxSize(),
+        baseStyle = BaseStyle.Uri(AppConfig.mapStyleUrl(night)),
+        navigationMapState = navigationMapState,
+        viewModel = viewModel,
+        // The speed limit sign is drawn by RoadSigns (with the roadworks sign beside it).
+        config = VisualNavigationViewConfig.Default(),
+        views =
+            NavigationViewComponentBuilder.Default()
+                .withInstructionsView { modifier, state ->
+                  state.visualInstruction?.let { instructions ->
+                    InstructionsView(
+                        modifier =
+                            modifier.onGloballyPositioned { bannerBottom.value = it.boundsInRoot().bottom },
+                        instructions = instructions,
+                        theme = DefaultNavigationUITheme.instructionRowTheme,
+                        remainingSteps = state.remainingSteps,
+                        distanceToNextManeuver = state.progress?.distanceToNextManeuver,
                     )
                   }
                 }
-              }
-              .withCustomOverlayView { modifier ->
-                if (uiState.isNavigating()) {
-                  NavigatingOverlay(modifier)
-                } else {
-                  BrowsingOverlay(modifier, viewModel, navigationMapState, settingsMenuOpen)
+                // Current speed sits just above the trip progress bar, bottom left.
+                .withProgressView { modifier, state, onTapExit ->
+                  state.progress?.let { progress ->
+                    val speed by viewModel.speedMetresPerSecond.collectAsState()
+                    Column(modifier) {
+                      Speedometer(
+                          reading =
+                              speedReading(
+                                  speed,
+                                  state.currentAnnotation?.speedLimit,
+                                  AppConfig.usesMetricUnits,
+                              ),
+                          metric = AppConfig.usesMetricUnits,
+                          modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+                      )
+                      TripProgressView(
+                          theme = DefaultNavigationUITheme.tripProgressViewTheme,
+                          progress = progress,
+                          onTapExit = onTapExit,
+                      )
+                    }
+                  }
                 }
-              },
-      onTapExit = { viewModel.stopNavigation() },
-      onMapLongClick = { coordinate, _ ->
-        if (!uiState.isNavigating()) viewModel.selectDestination(coordinate)
-        NavigationMapClickResult.Consume
-      },
-  ) { _ ->
-    if (showChargers) ChargerLayer(chargers, onClick = AppGraph.chargers::select)
-    SpeedCameraLayer(cameras)
-    DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
+                .withCustomOverlayView { modifier ->
+                  if (uiState.isNavigating()) {
+                    NavigatingOverlay(modifier, bannerBottom.value)
+                  } else {
+                    BrowsingOverlay(
+                        modifier,
+                        viewModel,
+                        navigationMapState,
+                        onOpenSettings = { settingsPage = SettingsPage.MAIN },
+                    )
+                  }
+                },
+        onTapExit = { viewModel.stopNavigation() },
+        onMapLongClick = { coordinate, _ ->
+          if (!uiState.isNavigating()) viewModel.selectDestination(coordinate)
+          NavigationMapClickResult.Consume
+        },
+    ) { _ ->
+      if (liveTraffic) TrafficLayer(trafficEvents, slowTraffic, onClick = AppGraph.traffic::selectById)
+      if (showChargers) {
+        ChargerLayer(chargers.filter { it.matches(plugTypes) }, onClick = AppGraph.chargers::select)
+      }
+      SpeedCameraLayer(cameras)
+      DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
+    }
+
+    settingsPage?.let { page -> SettingsScreen(page, onNavigate = { settingsPage = it }) }
   }
 }
 
 @Composable
-private fun NavigatingOverlay(modifier: Modifier) {
+private fun NavigatingOverlay(modifier: Modifier, bannerBottom: Float?) {
   val warning by AppGraph.speedCameras.activeWarning.collectAsState()
   val selectedCharger by AppGraph.chargers.selected.collectAsState()
   val location by AppGraph.navigationViewModel.location.collectAsState()
-  Box(modifier.fillMaxSize()) {
+  val trafficWarning by AppGraph.traffic.activeWarning.collectAsState()
+  val selectedTraffic by AppGraph.traffic.selected.collectAsState()
+  val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
+  val uiState by AppGraph.navigationViewModel.navigationUiState.collectAsState()
+  var overlayTop by remember { mutableStateOf(0f) }
+  val density = LocalDensity.current
+  Box(modifier.fillMaxSize().onGloballyPositioned { overlayTop = it.boundsInRoot().top }) {
+    // Where Ferrostar would put its speed limit sign: under the banner, 16 dp in.
+    bannerBottom?.let { bottom ->
+      RoadSigns(
+          speedLimit = uiState.currentAnnotation?.speedLimit,
+          roadworks = roadworks != null,
+          modifier =
+              Modifier.offset {
+                val gap = with(density) { 16.dp.roundToPx() }
+                IntOffset(gap, (bottom - overlayTop).toInt() + gap)
+              },
+      )
+    }
     selectedCharger?.let { station ->
       ChargerCard(
           station = station,
@@ -169,9 +228,20 @@ private fun NavigatingOverlay(modifier: Modifier) {
           modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp),
       )
     }
-    warning?.let {
-      // Left edge, mid-height: clear of the instruction banner (top) and trip progress (bottom).
-      CameraWarningBadge(it, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
+    // Left edge, mid-height: clear of the instruction banner (top) and trip progress (bottom).
+    Column(
+        Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      warning?.let { CameraWarningBadge(it) }
+      trafficWarning?.let { TrafficWarningBadge(it) }
+    }
+    selectedTraffic?.let { item ->
+      TrafficCard(
+          item,
+          onClose = { AppGraph.traffic.select(null) },
+          modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp),
+      )
     }
   }
 }
@@ -181,7 +251,7 @@ private fun BrowsingOverlay(
     modifier: Modifier,
     viewModel: OtrNavigationViewModel,
     navigationMapState: NavigationMapState,
-    settingsMenuOpen: MutableState<Boolean>,
+    onOpenSettings: () -> Unit,
 ) {
   val destination by viewModel.selectedDestination.collectAsState()
   val arrival by viewModel.arrival.collectAsState()
@@ -192,6 +262,7 @@ private fun BrowsingOverlay(
   var searching by remember { mutableStateOf(false) }
   var showNearbyChargers by remember { mutableStateOf(false) }
   val selectedCharger by AppGraph.chargers.selected.collectAsState()
+  val selectedTraffic by AppGraph.traffic.selected.collectAsState()
   val here = location?.coordinates?.let { LatLng(it.lat, it.lng) }
 
   Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -210,7 +281,12 @@ private fun BrowsingOverlay(
         modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      SettingsMenu(viewModel, settingsMenuOpen)
+      NavigationUIButton(onClick = onOpenSettings, buttonSize = DpSize(48.dp, 48.dp)) {
+        Icon(
+            painter = painterResource(R.drawable.ic_tune),
+            contentDescription = stringResource(R.string.settings_menu),
+        )
+      }
       NavigationUIButton(
           onClick = { navigationMapState.recenter(isNavigating = false) },
           buttonSize = DpSize(48.dp, 48.dp),
@@ -241,6 +317,8 @@ private fun BrowsingOverlay(
             onClose = { showNearbyChargers = false },
         )
       }
+
+      selectedTraffic?.let { item -> TrafficCard(item, onClose = { AppGraph.traffic.select(null) }) }
 
       selectedCharger?.let { station ->
         ChargerCard(
@@ -343,79 +421,6 @@ private suspend fun NavigationMapState.showDestination(lat: Double, lng: Double)
               padding = PaddingValues(bottom = 240.dp),
           ),
       duration = 1200.milliseconds,
-  )
-}
-
-/** A settings button that opens a menu with the app's toggles. */
-@Composable
-private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<Boolean>) {
-  val simulated by viewModel.simulated.collectAsState()
-  val camerasEnabled by AppGraph.settings.cameraWarningsEnabled.collectAsState(initial = false)
-  val voiceEnabled by AppGraph.settings.voiceGuidanceEnabled.collectAsState(initial = true)
-  val themeMode by AppGraph.settings.themeMode.collectAsState(initial = ThemeMode.AUTO)
-  val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
-  val scope = rememberCoroutineScope()
-  var expanded by open
-
-  Box {
-    NavigationUIButton(onClick = { expanded = true }, buttonSize = DpSize(48.dp, 48.dp)) {
-      Icon(
-          painter = painterResource(R.drawable.ic_tune),
-          contentDescription = stringResource(R.string.settings_menu),
-      )
-    }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-      DropdownMenuItem(
-          text = { Text(stringResource(R.string.night_mode)) },
-          // Tapping cycles Automatic -> Day -> Night.
-          onClick = {
-            val next = ThemeMode.entries[(themeMode.ordinal + 1) % ThemeMode.entries.size]
-            scope.launch { AppGraph.settings.setThemeMode(next) }
-          },
-          trailingIcon = {
-            Text(
-                stringResource(
-                    when (themeMode) {
-                      ThemeMode.AUTO -> R.string.night_mode_auto
-                      ThemeMode.DAY -> R.string.night_mode_day
-                      ThemeMode.NIGHT -> R.string.night_mode_night
-                    }
-                ),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp),
-            )
-          },
-      )
-      ToggleMenuItem(stringResource(R.string.voice_guidance), voiceEnabled) { enabled ->
-        scope.launch { AppGraph.settings.setVoiceGuidanceEnabled(enabled) }
-      }
-      ToggleMenuItem(stringResource(R.string.ev_chargers), showChargers) { show ->
-        scope.launch { AppGraph.settings.setShowChargers(show) }
-      }
-      ToggleMenuItem(stringResource(R.string.camera_warnings), camerasEnabled) { enabled ->
-        scope.launch { AppGraph.settings.setCameraWarningsEnabled(enabled) }
-      }
-      if (BuildConfig.DEBUG) {
-        ToggleMenuItem(stringResource(R.string.simulate_drive), simulated) {
-          viewModel.setSimulated(it)
-        }
-      }
-    }
-  }
-}
-
-@Composable
-private fun ToggleMenuItem(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-  DropdownMenuItem(
-      text = { Text(label) },
-      onClick = { onChange(!checked) },
-      trailingIcon = {
-        Switch(
-            checked = checked,
-            onCheckedChange = onChange,
-            modifier = Modifier.padding(start = 16.dp),
-        )
-      },
   )
 }
 
