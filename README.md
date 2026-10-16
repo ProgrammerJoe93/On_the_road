@@ -115,8 +115,15 @@ app/src/main/java/com/joegineered/ontheroad/
   config/              map style, routing endpoint, instruction language
   nav/                 the navigation session shared by the phone and car
   ui/                  phone UI (Compose + Ferrostar's MapLibre navigation view)
-  car/                 Android Auto (CarAppService, navigation screen, camera alerts)
-  cameras/             speed cameras: Overpass client, route matching, alert engine
+  car/                 Android Auto (CarAppService, navigation screen, search, chargers)
+  cameras/             speed cameras: Overpass client and cache, route matching, alert engine
+  chargers/            EV chargers from OpenStreetMap, fetched per map tile
+  traffic/             live traffic for Finland from Digitraffic
+  search/              Photon address search and recent destinations
+  offline/             offline map areas and route corridors (MapLibre offline packs)
+  net/                 connectivity monitoring
+  night/               day/night switching from the sun's position
+  voice/               spoken guidance and warnings
   settings/            DataStore preferences
 ```
 
