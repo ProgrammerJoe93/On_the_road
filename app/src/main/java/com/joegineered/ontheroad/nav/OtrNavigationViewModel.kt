@@ -11,7 +11,9 @@ import com.stadiamaps.ferrostar.core.NavigationUiState
 import com.stadiamaps.ferrostar.core.annotation.valhalla.valhallaExtendedOSRMAnnotationPublisher
 import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
 import com.stadiamaps.ferrostar.core.location.toUserLocation
+import com.stadiamaps.ferrostar.core.NavigationState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +26,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uniffi.ferrostar.GeographicCoordinate
+import uniffi.ferrostar.TripState
+import uniffi.ferrostar.TripSummary
 import uniffi.ferrostar.UserLocation
 import uniffi.ferrostar.Waypoint
 import uniffi.ferrostar.WaypointKind
@@ -49,6 +53,9 @@ sealed interface RoutingStatus {
   data object Loading : RoutingStatus
 
   data class Failed(val message: String) : RoutingStatus
+
+  /** The router found no drivable route, e.g. to a pedestrian zone or a bus-only terminal. */
+  data object NoRoute : RoutingStatus
 }
 
 /**
@@ -60,6 +67,8 @@ class OtrNavigationViewModel(
     private val ferrostarCore: FerrostarCore,
     private val locationProvider: NavigationLocationProvider,
     private val recentDestinations: RecentDestinations,
+    /** Whether the navigation voice is still speaking, so arrival doesn't cut it off. */
+    private val isSpeaking: () -> Boolean = { false },
 ) : DefaultNavigationViewModel(ferrostarCore, valhallaExtendedOSRMAnnotationPublisher()) {
 
   private val hasLocationPermission = MutableStateFlow(false)
@@ -75,6 +84,15 @@ class OtrNavigationViewModel(
 
   private val _simulated = MutableStateFlow(false)
   val simulated: StateFlow<Boolean> = _simulated.asStateFlow()
+
+  private val _arrival = MutableStateFlow<Arrival?>(null)
+  /** Set when a trip ends at its destination; cleared with [dismissArrival]. */
+  val arrival: StateFlow<Arrival?> = _arrival.asStateFlow()
+
+  /** The destination of the trip in progress. */
+  private var activeDestination: Destination? = null
+  private val parkedNearby = ParkedNearbyDetector()
+  private var finishing = false
 
   /** Shows the user's location on the map while browsing, not only while navigating. */
   override val navigationUiState: StateFlow<NavigationUiState> =
@@ -92,6 +110,50 @@ class OtrNavigationViewModel(
           }
           .collect { _location.value = it }
     }
+    viewModelScope.launch { ferrostarCore.state.collect(::watchForArrival) }
+  }
+
+  private fun watchForArrival(state: NavigationState) {
+    when (val trip = state.tripState) {
+      is TripState.Complete -> finishTrip(trip.summary)
+      is TripState.Navigating -> {
+        val parked =
+            parkedNearby.update(
+                trip.progress.distanceRemaining,
+                trip.userLocation.speed?.value,
+                System.currentTimeMillis(),
+            )
+        if (parked) finishTrip(trip.summary)
+      }
+      is TripState.Idle -> Unit
+    }
+  }
+
+  /** Ends the session at the destination, once the arrival announcement has been spoken. */
+  private fun finishTrip(summary: TripSummary) {
+    if (finishing) return
+    finishing = true
+    val endedAt = summary.endedAt?.time ?: System.currentTimeMillis()
+    _arrival.value =
+        Arrival(
+            destination = activeDestination,
+            distanceMetres = summary.distanceTraveled,
+            durationSeconds = ((endedAt - summary.startedAt.time) / 1000).coerceAtLeast(0),
+        )
+    viewModelScope.launch {
+      // Stopping navigation clears the speech queue; let "You have arrived" finish first.
+      var waited = 0L
+      while (isSpeaking() && waited < MAX_ARRIVAL_SPEECH_WAIT_MS) {
+        delay(250)
+        waited += 250
+      }
+      endSession()
+      finishing = false
+    }
+  }
+
+  fun dismissArrival() {
+    _arrival.value = null
   }
 
   fun setLocationPermission(permitted: Boolean) {
@@ -105,6 +167,7 @@ class OtrNavigationViewModel(
   fun selectDestination(destination: Destination) {
     _selectedDestination.value = destination
     _routingStatus.value = RoutingStatus.Idle
+    _arrival.value = null
   }
 
   fun clearDestination() {
@@ -142,6 +205,9 @@ class OtrNavigationViewModel(
         if (_simulated.value) locationProvider.enableSimulationOn(route)
 
         setDestination(destination.label)
+        activeDestination = destination
+        parkedNearby.reset()
+        _arrival.value = null
         if (navigationUiState.value.isNavigating()) {
           ferrostarCore.replaceRoute(route)
         } else {
@@ -156,15 +222,25 @@ class OtrNavigationViewModel(
             .onFailure { Log.w(TAG, "Could not save recent destination", it) }
       } catch (e: Exception) {
         Log.e(TAG, "Routing failed", e)
-        _routingStatus.value = RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
+        // Valhalla answers HTTP 400 ("NoRoute") when the destination can't be reached by car.
+        val noRoute = e.message?.contains("status code 400") == true
+        _routingStatus.value =
+            if (noRoute) RoutingStatus.NoRoute
+            else RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
       }
     }
   }
 
   override fun stopNavigation() {
+    endSession()
+  }
+
+  private fun endSession() {
     locationProvider.disableSimulation()
     ferrostarCore.stopNavigation()
     setDestination(null)
+    activeDestination = null
+    parkedNearby.reset()
   }
 
   private fun Destination.coordinateText() =
@@ -172,5 +248,6 @@ class OtrNavigationViewModel(
 
   private companion object {
     const val TAG = "OtrNavigationViewModel"
+    const val MAX_ARRIVAL_SPEECH_WAIT_MS = 8_000L
   }
 }

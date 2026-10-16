@@ -4,6 +4,7 @@
     <string name="start_navigation">Start</string>
     <string name="cancel">Cancel</string>
     <string name="selected_destination">Destination</string>
+    <string name="no_route">No driving route to this place. Try a point on a nearby street.</string>
     <string name="route_error">Could not find a route: %1$s</string>
     <string name="no_location_yet">Waiting for your location…</string>
     <string name="location_permission_needed">Location permission is needed for navigation.</string>
@@ -15,6 +16,11 @@
     <string name="camera_warnings">Speed camera warnings</string>
     <string name="settings_menu">Settings</string>
     <string name="voice_guidance">Voice guidance</string>
+    <string name="arrived_title">You have arrived</string>
+    <string name="arrival_summary">%1$s · %2$s</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="done">Done</string>
     <string name="search_hint">Search address or place</string>
     <string name="clear_search">Clear search</string>
     <string name="recent_destinations">Recent</string>

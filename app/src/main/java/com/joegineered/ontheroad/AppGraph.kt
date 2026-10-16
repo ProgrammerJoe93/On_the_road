@@ -125,7 +125,12 @@ object AppGraph {
   }
 
   val navigationViewModel: OtrNavigationViewModel by lazy {
-    OtrNavigationViewModel(ferrostarCore, locationProvider, recentDestinations)
+    OtrNavigationViewModel(
+        ferrostarCore,
+        locationProvider,
+        recentDestinations,
+        isSpeaking = { ttsObserver.tts?.isSpeaking == true },
+    )
   }
 
   val settings: SettingsRepository by lazy { SettingsRepository(appContext) }

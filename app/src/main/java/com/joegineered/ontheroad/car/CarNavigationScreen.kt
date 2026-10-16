@@ -5,10 +5,12 @@ import androidx.car.app.CarContext
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.Alert
+import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.CarText
 import androidx.car.app.model.Template
 import androidx.car.app.navigation.NavigationManager
+import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +30,9 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.cameras.CameraWarning
 import com.joegineered.ontheroad.config.AppConfig
+import com.joegineered.ontheroad.nav.Arrival
 import com.joegineered.ontheroad.nav.Destination
+import com.joegineered.ontheroad.ui.arrivalSummary
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
 import com.joegineered.ontheroad.ui.formatDistance
 import com.joegineered.ontheroad.ui.signageStyle
@@ -102,6 +106,7 @@ class CarNavigationScreen(
         .launchIn(scope)
 
     AppGraph.speedCameras.announcements.onEach(::showCameraAlert).launchIn(scope)
+    viewModel.arrival.onEach { invalidate() }.launchIn(scope)
 
     initialDestination?.location?.let { location ->
       viewModel.startNavigation(
@@ -170,6 +175,8 @@ class CarNavigationScreen(
           .build()
     }
 
+    viewModel.arrival.value?.let { return arrivalTemplate(it) }
+
     // Not navigating: a pannable map with destination search.
     val searchAction =
         Action.Builder()
@@ -182,6 +189,32 @@ class CarNavigationScreen(
             .build()
     return NavigationTemplate.Builder()
         .setActionStrip(ActionStrip.Builder().addAction(searchAction).build())
+        .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
+        .build()
+  }
+
+  /** "You have arrived" with the destination and trip summary, until the driver taps Done. */
+  private fun arrivalTemplate(arrival: Arrival): Template {
+    val flag =
+        CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_flag))
+            .setTint(CarColor.GREEN)
+            .build()
+    val details =
+        listOfNotNull(arrival.destination?.label, arrivalSummary(carContext, arrival))
+            .joinToString("\n")
+    val done =
+        Action.Builder()
+            .setTitle(carContext.getString(R.string.done))
+            .setOnClickListener { viewModel.dismissArrival() }
+            .build()
+    return NavigationTemplate.Builder()
+        .setNavigationInfo(
+            MessageInfo.Builder(carContext.getString(R.string.arrived_title))
+                .setText(details)
+                .setImage(flag)
+                .build()
+        )
+        .setActionStrip(ActionStrip.Builder().addAction(done).build())
         .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
         .build()
   }

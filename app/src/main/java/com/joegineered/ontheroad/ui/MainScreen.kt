@@ -82,6 +82,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
 
   val uiState by viewModel.navigationUiState.collectAsState()
   val destination by viewModel.selectedDestination.collectAsState()
+  val arrival by viewModel.arrival.collectAsState()
   val cameras by AppGraph.speedCameras.cameras.collectAsState()
   val navigationMapState = rememberNavigationMapState()
   // Kept at screen level so the menu state lives as long as the screen, not the overlay slot.
@@ -109,7 +110,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
       },
   ) { _ ->
     SpeedCameraLayer(cameras)
-    DestinationPinLayer(destination?.coordinate)
+    DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
   }
 }
 
@@ -132,6 +133,7 @@ private fun BrowsingOverlay(
     settingsMenuOpen: MutableState<Boolean>,
 ) {
   val destination by viewModel.selectedDestination.collectAsState()
+  val arrival by viewModel.arrival.collectAsState()
   val routingStatus by viewModel.routingStatus.collectAsState()
   val location by viewModel.location.collectAsState()
 
@@ -169,6 +171,8 @@ private fun BrowsingOverlay(
         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+      arrival?.let { ArrivalCard(it, onDone = { viewModel.dismissArrival() }) }
+
       if (location == null) {
         Card(Modifier.fillMaxWidth()) {
           Text(stringResource(R.string.no_location_yet), Modifier.padding(16.dp))
@@ -188,11 +192,15 @@ private fun BrowsingOverlay(
                         .format(Locale.ROOT, selected.coordinate.lat, selected.coordinate.lng),
                 style = MaterialTheme.typography.bodySmall,
             )
-            (routingStatus as? RoutingStatus.Failed)?.let {
-              Text(
-                  stringResource(R.string.route_error, it.message),
-                  color = MaterialTheme.colorScheme.error,
-              )
+            when (val status = routingStatus) {
+              is RoutingStatus.Failed ->
+                  Text(
+                      stringResource(R.string.route_error, status.message),
+                      color = MaterialTheme.colorScheme.error,
+                  )
+              RoutingStatus.NoRoute ->
+                  Text(stringResource(R.string.no_route), color = MaterialTheme.colorScheme.error)
+              else -> Unit
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               Button(
