@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,7 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.BuildConfig
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.config.AppConfig
+import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.nav.RoutingStatus
 import com.stadiamaps.ferrostar.composeui.config.NavigationViewComponentBuilder
@@ -56,12 +58,16 @@ import com.stadiamaps.ferrostar.composeui.runtime.KeepScreenOnDisposableEffect
 import com.stadiamaps.ferrostar.composeui.views.components.controls.NavigationUIButton
 import com.stadiamaps.ferrostar.composeui.views.components.speedlimit.SignageStyle
 import com.stadiamaps.ferrostar.maplibreui.NavigationMapClickResult
+import com.stadiamaps.ferrostar.maplibreui.runtime.NavigationCameraMode
 import com.stadiamaps.ferrostar.maplibreui.runtime.NavigationMapState
 import com.stadiamaps.ferrostar.maplibreui.runtime.rememberNavigationMapState
 import com.stadiamaps.ferrostar.maplibreui.views.DynamicallyOrientingNavigationView
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
+import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.style.BaseStyle
+import org.maplibre.spatialk.geojson.Position
 
 /** Speed limit signs: the US/Canada style in North America, Vienna Convention elsewhere. */
 fun signageStyle(): SignageStyle =
@@ -129,8 +135,21 @@ private fun BrowsingOverlay(
   val routingStatus by viewModel.routingStatus.collectAsState()
   val location by viewModel.location.collectAsState()
 
+  val scope = rememberCoroutineScope()
+  var searching by remember { mutableStateOf(false) }
+
   Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-    Column(
+    SearchPanel(
+        onPlaceSelected = { place ->
+          viewModel.selectDestination(Destination.from(place))
+          scope.launch { navigationMapState.showDestination(place.lat, place.lng) }
+        },
+        modifier = Modifier.align(Alignment.TopCenter).padding(16.dp),
+        onActiveChanged = { searching = it },
+    )
+
+    // Hidden while searching so they don't cover the results list.
+    if (!searching) Column(
         modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -164,7 +183,9 @@ private fun BrowsingOverlay(
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "%.5f, %.5f".format(Locale.ROOT, selected.coordinate.lat, selected.coordinate.lng),
+                selected.subtitle
+                    ?: "%.5f, %.5f"
+                        .format(Locale.ROOT, selected.coordinate.lat, selected.coordinate.lng),
                 style = MaterialTheme.typography.bodySmall,
             )
             (routingStatus as? RoutingStatus.Failed)?.let {
@@ -194,11 +215,26 @@ private fun BrowsingOverlay(
   }
 }
 
+/** Moves the map to a chosen destination, leaving room for the destination card below it. */
+private suspend fun NavigationMapState.showDestination(lat: Double, lng: Double) {
+  cameraMode = NavigationCameraMode.FREE
+  cameraState.animateTo(
+      finalPosition =
+          CameraPosition(
+              target = Position(longitude = lng, latitude = lat),
+              zoom = 15.5,
+              padding = PaddingValues(bottom = 240.dp),
+          ),
+      duration = 1200.milliseconds,
+  )
+}
+
 /** A settings button that opens a menu with the app's toggles. */
 @Composable
 private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<Boolean>) {
   val simulated by viewModel.simulated.collectAsState()
   val camerasEnabled by AppGraph.settings.cameraWarningsEnabled.collectAsState(initial = false)
+  val voiceEnabled by AppGraph.settings.voiceGuidanceEnabled.collectAsState(initial = true)
   val scope = rememberCoroutineScope()
   var expanded by open
 
@@ -210,6 +246,9 @@ private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<B
       )
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+      ToggleMenuItem(stringResource(R.string.voice_guidance), voiceEnabled) { enabled ->
+        scope.launch { AppGraph.settings.setVoiceGuidanceEnabled(enabled) }
+      }
       ToggleMenuItem(stringResource(R.string.camera_warnings), camerasEnabled) { enabled ->
         scope.launch { AppGraph.settings.setCameraWarningsEnabled(enabled) }
       }

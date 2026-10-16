@@ -34,7 +34,6 @@ import com.joegineered.ontheroad.ui.formatDistance
 import com.joegineered.ontheroad.ui.signageStyle
 import com.rallista.car.app.compose.ComposableScreen
 import com.stadiamaps.ferrostar.car.app.intent.NavigationDestination
-import com.stadiamaps.ferrostar.car.app.navigation.NavigationManagerBridge
 import com.stadiamaps.ferrostar.car.app.navigation.TurnByTurnNotificationManager
 import com.stadiamaps.ferrostar.car.app.template.NavigationTemplateBuilder
 import com.stadiamaps.ferrostar.composeui.config.VisualNavigationViewConfig
@@ -60,9 +59,9 @@ import uniffi.ferrostar.GeographicCoordinate
 
 /**
  * The Android Auto navigation screen. Renders the MapLibre map on the car surface and shows
- * Ferrostar's turn-by-turn info in a [NavigationTemplate]. [NavigationManagerBridge] sends the
- * trip (next maneuver, distance, lanes, ETA) to the car, which is what cars with cluster or HUD
- * support display.
+ * Ferrostar's turn-by-turn info in a [NavigationTemplate]. [TripPublisher] sends the trip (next
+ * maneuver, distance to it, lanes, ETA) to the car, which is what cars with cluster or HUD support
+ * display.
  */
 class CarNavigationScreen(
     carContext: CarContext,
@@ -72,8 +71,8 @@ class CarNavigationScreen(
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private val viewModel = AppGraph.navigationViewModel
 
-  private val navigationManagerBridge =
-      NavigationManagerBridge(
+  private val tripPublisher =
+      TripPublisher(
           navigationManager = carContext.getCarService(NavigationManager::class.java),
           viewModel = viewModel,
           context = carContext,
@@ -93,7 +92,7 @@ class CarNavigationScreen(
   private val surfaceAreaTracker = SurfaceAreaTracker { surfaceGestureCallback = it }
 
   init {
-    navigationManagerBridge.start(scope)
+    tripPublisher.start(scope)
 
     viewModel.navigationUiState
         .onEach { state ->
@@ -116,7 +115,7 @@ class CarNavigationScreen(
     lifecycle.addObserver(
         object : DefaultLifecycleObserver {
           override fun onDestroy(owner: LifecycleOwner) {
-            navigationManagerBridge.stop()
+            tripPublisher.stop()
             scope.cancel()
           }
         }
@@ -171,9 +170,19 @@ class CarNavigationScreen(
           .build()
     }
 
-    // Not navigating: a pannable map. Destinations are chosen on the phone or by voice.
+    // Not navigating: a pannable map with destination search.
+    val searchAction =
+        Action.Builder()
+            .setIcon(
+                CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_search))
+                    .build()
+            )
+            .setTitle(carContext.getString(R.string.search))
+            .setOnClickListener { screenManager.push(CarSearchScreen(carContext)) }
+            .build()
     return NavigationTemplate.Builder()
-        .setActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
+        .setActionStrip(ActionStrip.Builder().addAction(searchAction).build())
+        .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
         .build()
   }
 

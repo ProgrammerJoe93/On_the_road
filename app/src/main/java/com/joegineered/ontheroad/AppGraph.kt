@@ -1,7 +1,9 @@
 package com.joegineered.ontheroad
 
+import android.Manifest
 import android.content.Context
-import android.speech.tts.TextToSpeech
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.util.Log
 import com.joegineered.ontheroad.cameras.CameraAlertEngine
 import com.joegineered.ontheroad.cameras.CameraWarningAnnouncer
@@ -10,10 +12,18 @@ import com.joegineered.ontheroad.cameras.SpeedCameraController
 import com.joegineered.ontheroad.cameras.SpeedCameraRepository
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
+import com.joegineered.ontheroad.search.PhotonGeocoder
+import com.joegineered.ontheroad.search.RecentDestinations
 import com.joegineered.ontheroad.settings.SettingsRepository
+import com.joegineered.ontheroad.voice.NavigationVoice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import com.stadiamaps.ferrostar.composeui.notification.DefaultForegroundNotificationBuilder
 import com.stadiamaps.ferrostar.core.AndroidTtsObserver
-import com.stadiamaps.ferrostar.core.AndroidTtsStatusListener
 import com.stadiamaps.ferrostar.core.FerrostarCore
 import com.stadiamaps.ferrostar.core.http.OkHttpClientProvider.Companion.toOkHttpClientProvider
 import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
@@ -22,7 +32,6 @@ import com.stadiamaps.ferrostar.core.service.FerrostarForegroundServiceManager
 import com.stadiamaps.ferrostar.core.withJsonOptions
 import com.stadiamaps.ferrostar.googleplayservices.FusedNavigationLocationProvider
 import java.time.Duration
-import java.util.Locale
 import okhttp3.OkHttpClient
 import uniffi.ferrostar.CourseFiltering
 import uniffi.ferrostar.NavigationControllerConfig
@@ -44,8 +53,28 @@ object AppGraph {
   fun init(context: Context) {
     if (::appContext.isInitialized) return
     appContext = context.applicationContext
-    ttsObserver.statusObserver = ttsStatusListener
-    ttsObserver.start()
+    voice.start()
+    syncVoiceGuidanceSetting()
+  }
+
+  /**
+   * Keeps the voice guidance setting and the mute button in sync, so muting during navigation is
+   * remembered and the setting applies to the next trip.
+   */
+  private fun syncVoiceGuidanceSetting() {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    scope.launch {
+      settings.voiceGuidanceEnabled.collect { enabled ->
+        if (ttsObserver.isMuted == enabled) ttsObserver.setMuted(!enabled)
+      }
+    }
+    scope.launch {
+      ttsObserver.muteState.drop(1).collect { muted ->
+        if (settings.voiceGuidanceEnabled.first() == muted) {
+          settings.setVoiceGuidanceEnabled(!muted)
+        }
+      }
+    }
   }
 
   val httpClient: OkHttpClient by lazy {
@@ -66,24 +95,7 @@ object AppGraph {
 
   val ttsObserver: AndroidTtsObserver by lazy { AndroidTtsObserver(appContext) }
 
-  private val ttsStatusListener =
-      object : AndroidTtsStatusListener {
-        override fun onTtsInitialized(tts: TextToSpeech?, status: Int) {
-          if (tts == null) {
-            Log.e(TAG, "TTS setup failed: $status")
-            return
-          }
-          tts.language = Locale.forLanguageTag(AppConfig.instructionLanguage())
-        }
-
-        override fun onTtsSpeakError(utteranceId: String, status: Int) {
-          Log.e(TAG, "TTS failed for utterance $utteranceId: $status")
-        }
-
-        override fun onTtsShutdownAndRelease() {
-          Log.i(TAG, "TTS released")
-        }
-      }
+  val voice: NavigationVoice by lazy { NavigationVoice(appContext, ttsObserver) }
 
   val ferrostarCore: FerrostarCore by lazy {
     val options =
@@ -113,17 +125,32 @@ object AppGraph {
   }
 
   val navigationViewModel: OtrNavigationViewModel by lazy {
-    OtrNavigationViewModel(ferrostarCore, locationProvider)
+    OtrNavigationViewModel(ferrostarCore, locationProvider, recentDestinations)
   }
 
   val settings: SettingsRepository by lazy { SettingsRepository(appContext) }
+
+  val geocoder: PhotonGeocoder by lazy { PhotonGeocoder(httpClient) }
+
+  val recentDestinations: RecentDestinations by lazy { RecentDestinations(appContext) }
+
+  /**
+   * Starts location updates if permission has been granted. The phone UI asks for permission; the
+   * car can't, so an Android Auto session relies on it having been granted on the phone.
+   */
+  fun refreshLocationPermission() {
+    val granted =
+        ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+    navigationViewModel.setLocationPermission(granted)
+  }
 
   val speedCameras: SpeedCameraController by lazy {
     SpeedCameraController(
         navigationState = ferrostarCore.state,
         repository = SpeedCameraRepository(OverpassClient(overpassHttpClient), appContext.cacheDir),
         alertEngine = CameraAlertEngine(),
-        announcer = CameraWarningAnnouncer(appContext, ttsObserver),
+        announcer = CameraWarningAnnouncer(appContext, voice),
         settings = settings,
     )
   }

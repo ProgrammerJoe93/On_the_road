@@ -1,6 +1,9 @@
 package com.joegineered.ontheroad.nav
 
 import android.util.Log
+import com.joegineered.ontheroad.search.Place
+import com.joegineered.ontheroad.search.RecentDestinations
+import java.util.Locale
 import androidx.lifecycle.viewModelScope
 import com.stadiamaps.ferrostar.core.DefaultNavigationViewModel
 import com.stadiamaps.ferrostar.core.FerrostarCore
@@ -25,7 +28,19 @@ import uniffi.ferrostar.UserLocation
 import uniffi.ferrostar.Waypoint
 import uniffi.ferrostar.WaypointKind
 
-data class Destination(val coordinate: GeographicCoordinate, val label: String? = null)
+data class Destination(
+    val coordinate: GeographicCoordinate,
+    val label: String? = null,
+    val subtitle: String? = null,
+) {
+  fun toPlace(fallbackTitle: String) =
+      Place(label ?: fallbackTitle, subtitle, coordinate.lat, coordinate.lng)
+
+  companion object {
+    fun from(place: Place) =
+        Destination(GeographicCoordinate(place.lat, place.lng), place.title, place.subtitle)
+  }
+}
 
 /** Route request progress, shown on the phone while no navigation session is active. */
 sealed interface RoutingStatus {
@@ -44,6 +59,7 @@ sealed interface RoutingStatus {
 class OtrNavigationViewModel(
     private val ferrostarCore: FerrostarCore,
     private val locationProvider: NavigationLocationProvider,
+    private val recentDestinations: RecentDestinations,
 ) : DefaultNavigationViewModel(ferrostarCore, valhallaExtendedOSRMAnnotationPublisher()) {
 
   private val hasLocationPermission = MutableStateFlow(false)
@@ -83,7 +99,11 @@ class OtrNavigationViewModel(
   }
 
   fun selectDestination(coordinate: GeographicCoordinate, label: String? = null) {
-    _selectedDestination.value = Destination(coordinate, label)
+    selectDestination(Destination(coordinate, label))
+  }
+
+  fun selectDestination(destination: Destination) {
+    _selectedDestination.value = destination
     _routingStatus.value = RoutingStatus.Idle
   }
 
@@ -129,6 +149,11 @@ class OtrNavigationViewModel(
         }
         _selectedDestination.value = null
         _routingStatus.value = RoutingStatus.Idle
+        // Remembering the destination is best-effort; it must not fail an active session.
+        runCatching {
+              recentDestinations.add(destination.toPlace(destination.coordinateText()))
+            }
+            .onFailure { Log.w(TAG, "Could not save recent destination", it) }
       } catch (e: Exception) {
         Log.e(TAG, "Routing failed", e)
         _routingStatus.value = RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
@@ -141,6 +166,9 @@ class OtrNavigationViewModel(
     ferrostarCore.stopNavigation()
     setDestination(null)
   }
+
+  private fun Destination.coordinateText() =
+      "%.5f, %.5f".format(Locale.ROOT, coordinate.lat, coordinate.lng)
 
   private companion object {
     const val TAG = "OtrNavigationViewModel"

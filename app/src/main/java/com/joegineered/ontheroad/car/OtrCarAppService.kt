@@ -20,6 +20,7 @@ class OtrCarAppService : CarAppService() {
 class OtrCarSession : Session() {
   override fun onCreateScreen(intent: Intent): Screen {
     AppGraph.init(carContext)
+    AppGraph.refreshLocationPermission()
     AppGraph.speedCameras.start()
     // Handles geo: and google.navigation: intents, e.g. from the Android Auto assistant.
     val destination = parseDestinationIntent(intent)

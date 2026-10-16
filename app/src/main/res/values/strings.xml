@@ -14,5 +14,13 @@
     <string name="speed_camera_ahead_limit">Speed camera ahead. Limit %1$d.</string>
     <string name="camera_warnings">Speed camera warnings</string>
     <string name="settings_menu">Settings</string>
+    <string name="voice_guidance">Voice guidance</string>
+    <string name="search_hint">Search address or place</string>
+    <string name="clear_search">Clear search</string>
+    <string name="recent_destinations">Recent</string>
+    <string name="no_results">No places found</string>
+    <string name="search_failed">Search failed: %1$s</string>
+    <string name="searching">Searching…</string>
+    <string name="search">Search</string>
     <string name="osm_attribution">© OpenStreetMap contributors</string>
 </resources>

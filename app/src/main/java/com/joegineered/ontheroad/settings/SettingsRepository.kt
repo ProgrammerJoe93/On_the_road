@@ -22,6 +22,14 @@ class SettingsRepository(private val context: Context) {
         prefs[CAMERA_WARNINGS] ?: cameraWarningsAllowedByDefault(currentCountry())
       }
 
+  /** Whether turn instructions and warnings are spoken. Mirrors the mute button. */
+  val voiceGuidanceEnabled: Flow<Boolean> =
+      context.dataStore.data.map { prefs -> prefs[VOICE_GUIDANCE] ?: true }
+
+  suspend fun setVoiceGuidanceEnabled(enabled: Boolean) {
+    context.dataStore.edit { it[VOICE_GUIDANCE] = enabled }
+  }
+
   suspend fun setCameraWarningsEnabled(enabled: Boolean) {
     context.dataStore.edit { it[CAMERA_WARNINGS] = enabled }
   }
@@ -35,6 +43,7 @@ class SettingsRepository(private val context: Context) {
 
   companion object {
     private val CAMERA_WARNINGS = booleanPreferencesKey("camera_warnings")
+    private val VOICE_GUIDANCE = booleanPreferencesKey("voice_guidance")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This
