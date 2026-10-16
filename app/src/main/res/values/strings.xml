@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">On the Road</string>
+    <string name="start_navigation">Start</string>
+    <string name="cancel">Cancel</string>
+    <string name="selected_destination">Destination</string>
+    <string name="route_error">Could not find a route: %1$s</string>
+    <string name="no_location_yet">Waiting for your location…</string>
+    <string name="location_permission_needed">Location permission is needed for navigation.</string>
+    <string name="simulate_drive">Simulate drive</string>
+    <string name="center_on_my_location">Center on my location</string>
+    <string name="speed_camera_ahead">Speed camera ahead</string>
+    <string name="speed_camera_in">Speed camera in %1$s</string>
+    <string name="speed_camera_ahead_limit">Speed camera ahead. Limit %1$d.</string>
+    <string name="camera_warnings">Speed camera warnings</string>
+    <string name="settings_menu">Settings</string>
+    <string name="osm_attribution">© OpenStreetMap contributors</string>
+</resources>

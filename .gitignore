@@ -1,0 +1,27 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+
+# Machine-specific configuration (SDK path, routing endpoint)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.navigation/
+.externalNativeBuild/
+.cxx/
+
+# Signing keys and secrets
+*.jks
+*.keystore
+keystore.properties
+
+# Profiler and crash dumps
+*.hprof
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for a speed camera: white camera on a red disc with a white rim. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="34dp"
+    android:height="34dp"
+    android:viewportWidth="34"
+    android:viewportHeight="34">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M17,1a16,16 0,1 0,0.001 0z" />
+    <path
+        android:fillColor="#FFD32F2F"
+        android:pathData="M17,3.5a13.5,13.5 0,1 0,0.001 0z" />
+    <group
+        android:translateX="8"
+        android:translateY="8"
+        android:scaleX="0.75"
+        android:scaleY="0.75">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M3,7h12a2,2 0,0 1,2 2v6a2,2 0,0 1,-2 2H3a2,2 0,0 1,-2 -2V9a2,2 0,0 1,2 -2z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M18,10l5,-3v10l-5,-3z" />
+    </group>
+</vector>

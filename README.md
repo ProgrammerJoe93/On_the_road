@@ -1,0 +1,124 @@
+# On the Road
+
+An open-source Android map and turn-by-turn navigation app with Android Auto support. It is built on
+[MapLibre Native](https://maplibre.org/) and [Ferrostar](https://github.com/stadiamaps/ferrostar).
+
+## Features
+
+- **Map:** vector map from [OpenFreeMap](https://openfreemap.org/) (no API key needed).
+- **Routing:** car routes from [Valhalla](https://github.com/valhalla/valhalla), with instructions in the device language.
+- **Turn-by-turn navigation:**
+  - lane guidance and a speed-limit sign;
+  - spoken instructions;
+  - rerouting when you leave the route;
+  - background navigation through a foreground service.
+- **Speed camera warnings:**
+  - camera data comes from OpenStreetMap through the Overpass API;
+  - a camera is matched to the route by its distance from the route and its direction;
+  - cameras on parallel and crossing roads are rejected;
+  - a chime, a spoken warning and an on-screen badge, plus a car alert in Android Auto.
+- **Android Auto:**
+  - the MapLibre map on the car screen;
+  - Ferrostar's `NavigationTemplate`;
+  - trip updates (`updateTrip`) that let supported cars show the next turn in the cluster or HUD.
+
+## Build
+
+Requirements:
+- JDK 17–21. If your default `java` is newer, point Gradle at a supported JDK with `org.gradle.java.home=<path>` in `~/.gradle/gradle.properties`.
+- The Android SDK with platform 36. Set `sdk.dir` in `local.properties`.
+
+```sh
+./gradlew :app:assembleDebug        # build
+./gradlew :app:installDebug         # install on a connected device or emulator
+./gradlew :app:testDebugUnitTest    # unit tests (offline)
+```
+
+The camera pipeline also has a live test, which calls the real Valhalla and Overpass servers:
+
+```sh
+OTR_LIVE_TESTS=1 ./gradlew :app:testDebugUnitTest --tests '*LiveCameraPipelineTest*' -i
+```
+
+### Configuration
+
+Add these to `local.properties`:
+
+| Key | Default | Purpose |
+|---|---|---|
+| `valhallaUrl` | `https://valhalla1.openstreetmap.de/route` | Valhalla route endpoint |
+
+The default routing server is the FOSSGIS public server, which is fair-use only. For regular use,
+self-host Valhalla or use a commercial endpoint.
+
+## Using the app
+
+1. Grant the location permission.
+2. Long-press the map to choose a destination.
+3. Tap **Start**.
+
+In debug builds, the **Simulate drive** switch replays the route instead of using GPS.
+
+To test the app in the emulator without driving, set its position:
+```sh
+adb emu geo fix <lon> <lat>
+```
+
+## Android Auto
+
+To test Android Auto with the Desktop Head Unit (DHU):
+
+1. On the phone or emulator, install Android Auto. In Android Auto's settings, tap the version
+   number repeatedly to enable developer mode. Then use the overflow menu to enable
+   *Unknown sources* and *Start head unit server*.
+2. Install the DHU through the SDK Manager (`extras;google;auto`).
+3. Forward the head unit port and start the DHU:
+   ```sh
+   adb forward tcp:5277 tcp:5277
+   ~/Android/Sdk/extras/google/auto/desktop-head-unit
+   ```
+4. The app appears in the DHU launcher.
+   - Start navigation from the phone, or with a `geo:` intent.
+   - In the car, *auto drive* enables the simulated drive.
+
+The DHU can also emulate an instrument cluster: see its `--config` options and the configuration
+files in the DHU directory. Whether a real car shows the next turn in its cluster or HUD depends on
+the carmaker.
+
+## Speed camera warnings
+
+- **Legality:** speed camera warnings are restricted in some countries. The setting defaults to off
+  in the countries listed in `SettingsRepository.CAMERA_WARNING_RESTRICTED_COUNTRIES`. That list is
+  a conservative default, not legal advice.
+- **Data load:** each new route queries the public Overpass API. Responses are cached on disk for
+  7 days, and busy servers are retried with backoff. However, the public servers are meant for
+  human-scale use. If the app gets real users, serve a prebuilt camera dataset (for example, a
+  daily extract) or run your own Overpass instance.
+
+## Project layout
+
+```
+app/src/main/java/com/joegineered/ontheroad/
+  AppGraph.kt          shared singletons (Ferrostar core, location, TTS, view model)
+  config/              map style, routing endpoint, instruction language
+  nav/                 the navigation session shared by the phone and car
+  ui/                  phone UI (Compose + Ferrostar's MapLibre navigation view)
+  car/                 Android Auto (CarAppService, navigation screen, camera alerts)
+  cameras/             speed cameras: Overpass client, route matching, alert engine
+  settings/            DataStore preferences
+```
+
+## Licences and attribution
+
+On the Road is released under the BSD 3-Clause License; see [LICENSE](LICENSE).
+
+
+| Component | Licence |
+|---|---|
+| MapLibre | BSD-2-Clause |
+| Ferrostar | BSD-3-Clause |
+| Valhalla | MIT |
+| AndroidX Car App Library | Apache-2.0 |
+
+Map data, routing data and speed camera data are © OpenStreetMap contributors (ODbL). The map's
+attribution button must stay visible.
