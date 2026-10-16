@@ -13,7 +13,9 @@ import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -24,7 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.IconCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -38,6 +42,8 @@ import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.settings.ThemeMode
 import com.joegineered.ontheroad.ui.arrivalSummary
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
+import com.joegineered.ontheroad.ui.Speedometer
+import com.joegineered.ontheroad.ui.speedReading
 import com.joegineered.ontheroad.ui.formatDistance
 import com.joegineered.ontheroad.ui.signageStyle
 import com.rallista.car.app.compose.ComposableScreen
@@ -175,16 +181,35 @@ class CarNavigationScreen(
     }
     LaunchedEffect(mapState) { snapshotFlow { mapState.cameraMode }.collectLatest { invalidate() } }
 
-    CarAppNavigationView(
-        modifier = Modifier.fillMaxSize(),
-        styleUrl = AppConfig.mapStyleUrl(night),
-        navigationMapState = mapState,
-        navigationCameraOptions = cameraOptions,
-        viewModel = viewModel,
-        config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
-        surfaceAreaTracker = surfaceAreaTracker,
-    ) { _ ->
-      SpeedCameraLayer(cameras)
+    Box(Modifier.fillMaxSize()) {
+      CarAppNavigationView(
+          modifier = Modifier.fillMaxSize(),
+          styleUrl = AppConfig.mapStyleUrl(night),
+          navigationMapState = mapState,
+          navigationCameraOptions = cameraOptions,
+          viewModel = viewModel,
+          config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
+          surfaceAreaTracker = surfaceAreaTracker,
+      ) { _ ->
+        SpeedCameraLayer(cameras)
+      }
+
+      // Current speed, bottom left inside the area the car's navigation UI leaves visible.
+      if (uiState?.isNavigating() == true) {
+        val speed by viewModel.speedMetresPerSecond.collectAsState()
+        Box(Modifier.fillMaxSize().padding(normalPadding).padding(8.dp)) {
+          Speedometer(
+              reading =
+                  speedReading(
+                      speed,
+                      uiState?.currentAnnotation?.speedLimit,
+                      AppConfig.usesMetricUnits,
+                  ),
+              metric = AppConfig.usesMetricUnits,
+              modifier = Modifier.align(Alignment.BottomStart),
+          )
+        }
+      }
     }
   }
 
