@@ -52,6 +52,7 @@ fun SearchPanel(
     onPlaceSelected: (Place) -> Unit,
     modifier: Modifier = Modifier,
     onActiveChanged: (Boolean) -> Unit = {},
+    onChargersNearby: (() -> Unit)? = null,
 ) {
   val scope = rememberCoroutineScope()
   val viewModel = AppGraph.navigationViewModel
@@ -128,6 +129,23 @@ fun SearchPanel(
       }
 
       val showingRecents = query.trim().length < 3
+      if (showingRecents && onChargersNearby != null) {
+        HorizontalDivider()
+        Row(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .clickable {
+                      focusManager.clearFocus()
+                      onChargersNearby()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+          Icon(painterResource(R.drawable.ic_bolt), contentDescription = null, tint = Color(0xFF2E7D32))
+          Text(stringResource(R.string.chargers_nearby), style = MaterialTheme.typography.bodyLarge)
+        }
+      }
       when {
         showingRecents && recents.isNotEmpty() -> {
           SectionLabel(stringResource(R.string.recent_destinations))

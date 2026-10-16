@@ -41,6 +41,7 @@ import com.joegineered.ontheroad.nav.Arrival
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.settings.ThemeMode
 import com.joegineered.ontheroad.ui.arrivalSummary
+import com.joegineered.ontheroad.ui.ChargerLayer
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
 import com.joegineered.ontheroad.ui.Speedometer
 import com.joegineered.ontheroad.ui.speedReading
@@ -65,7 +66,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import uniffi.ferrostar.DrivingSide
@@ -172,6 +175,8 @@ class CarNavigationScreen(
             .copy(browsingPadding = normalPadding, navigationPadding = trackingPadding)
     val mapState = rememberNavigationMapState(navigationCameraOptions = cameraOptions)
     val cameras by AppGraph.speedCameras.cameras.collectAsState()
+    val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
+    val chargers by AppGraph.chargers.visible.collectAsState()
 
     browsingPadding = normalPadding
     navigationMapState = mapState
@@ -180,6 +185,18 @@ class CarNavigationScreen(
       if (uiState?.isNavigating() == true) mapState.recenter(isNavigating = true)
     }
     LaunchedEffect(mapState) { snapshotFlow { mapState.cameraMode }.collectLatest { invalidate() } }
+    LaunchedEffect(mapState, showChargers) {
+      if (!showChargers) return@LaunchedEffect
+      snapshotFlow {
+            val position = mapState.cameraState.position
+            mapState.cameraState.projection?.queryVisibleBoundingBox()?.let { position.zoom to it }
+          }
+          .filterNotNull()
+          .collectLatest { (zoom, bounds) ->
+            delay(300)
+            AppGraph.chargers.onViewportChanged(bounds.south, bounds.west, bounds.north, bounds.east, zoom)
+          }
+    }
 
     Box(Modifier.fillMaxSize()) {
       CarAppNavigationView(
@@ -191,6 +208,7 @@ class CarNavigationScreen(
           config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
           surfaceAreaTracker = surfaceAreaTracker,
       ) { _ ->
+        if (showChargers) ChargerLayer(chargers)
         SpeedCameraLayer(cameras)
       }
 
@@ -241,8 +259,19 @@ class CarNavigationScreen(
             .setTitle(carContext.getString(R.string.search))
             .setOnClickListener { screenManager.push(CarSearchScreen(carContext)) }
             .build()
+    val chargersAction =
+        Action.Builder()
+            .setIcon(
+                CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_bolt))
+                    .build()
+            )
+            .setTitle(carContext.getString(R.string.ev_chargers))
+            .setOnClickListener { screenManager.push(CarChargersScreen(carContext)) }
+            .build()
     return NavigationTemplate.Builder()
-        .setActionStrip(ActionStrip.Builder().addAction(searchAction).build())
+        .setActionStrip(
+            ActionStrip.Builder().addAction(searchAction).addAction(chargersAction).build()
+        )
         .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
         .build()
   }

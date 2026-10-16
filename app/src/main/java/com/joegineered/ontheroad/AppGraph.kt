@@ -8,9 +8,12 @@ import androidx.core.content.ContextCompat
 import android.util.Log
 import com.joegineered.ontheroad.cameras.CameraAlertEngine
 import com.joegineered.ontheroad.cameras.CameraWarningAnnouncer
+import com.joegineered.ontheroad.cameras.OverpassCache
 import com.joegineered.ontheroad.cameras.OverpassClient
 import com.joegineered.ontheroad.cameras.SpeedCameraController
 import com.joegineered.ontheroad.cameras.SpeedCameraRepository
+import com.joegineered.ontheroad.chargers.ChargerController
+import com.joegineered.ontheroad.chargers.ChargerRepository
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.night.NightModeController
@@ -88,6 +91,10 @@ object AppGraph {
     httpClient.newBuilder().callTimeout(Duration.ofSeconds(90)).readTimeout(Duration.ofSeconds(90)).build()
   }
 
+  val overpass: OverpassCache by lazy {
+    OverpassCache(OverpassClient(overpassHttpClient), appContext.cacheDir)
+  }
+
   val locationProvider: NavigationLocationProvider by lazy {
     NavigationLocationProvider(
         liveProviding = FusedNavigationLocationProvider(appContext),
@@ -139,6 +146,10 @@ object AppGraph {
 
   val geocoder: PhotonGeocoder by lazy { PhotonGeocoder(httpClient) }
 
+  val chargers: ChargerController by lazy {
+    ChargerController(ChargerRepository(overpass), CoroutineScope(SupervisorJob() + Dispatchers.IO))
+  }
+
   val nightMode: NightModeController by lazy {
     NightModeController(
         settings = settings,
@@ -167,7 +178,7 @@ object AppGraph {
   val speedCameras: SpeedCameraController by lazy {
     SpeedCameraController(
         navigationState = ferrostarCore.state,
-        repository = SpeedCameraRepository(OverpassClient(overpassHttpClient), appContext.cacheDir),
+        repository = SpeedCameraRepository(overpass),
         alertEngine = CameraAlertEngine(),
         announcer = CameraWarningAnnouncer(appContext, voice),
         settings = settings,

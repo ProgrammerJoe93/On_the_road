@@ -6,7 +6,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.cameras.MatchedCamera
+import com.joegineered.ontheroad.chargers.ChargerController
+import com.joegineered.ontheroad.chargers.ChargingStation
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import org.maplibre.compose.util.ClickResult
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.value.IconPitchAlignment
@@ -72,4 +78,50 @@ fun DestinationPinLayer(destination: GeographicCoordinate?) {
       strokeColor = const(Color.White),
       strokeWidth = const(3.dp),
   )
+}
+
+/**
+ * EV chargers: fast (DC) chargers full size, AC chargers smaller. Tapping one calls [onClick]
+ * with its id.
+ */
+@Composable
+@MaplibreComposable
+fun ChargerLayer(chargers: List<ChargingStation>, onClick: ((String) -> Unit)? = null) {
+  if (chargers.isEmpty()) return
+  val icon = image(painterResource(R.drawable.map_charger))
+  val (fast, ac) = chargers.partition { it.isFast }
+  listOf("otr-chargers-ac" to (ac to 0.75f), "otr-chargers-fast" to (fast to 1f)).forEach {
+      (id, group) ->
+    val (stations, size) = group
+    if (stations.isEmpty()) return@forEach
+    val source =
+        rememberGeoJsonSource(
+            GeoJsonData.Features(
+                FeatureCollection(
+                    stations.map {
+                      Feature(
+                          geometry = Point(longitude = it.position.lng, latitude = it.position.lat),
+                          properties = buildJsonObject { put("id", it.id) },
+                      )
+                    }
+                )
+            )
+        )
+    SymbolLayer(
+        id = id,
+        source = source,
+        minZoom = ChargerController.MIN_ZOOM.toFloat(),
+        iconImage = icon,
+        iconSize = const(size),
+        iconPitchAlignment = const(IconPitchAlignment.Viewport),
+        iconAllowOverlap = const(true),
+        onClick =
+            onClick?.let { handler ->
+              { features ->
+                features.firstOrNull()?.properties?.get("id")?.jsonPrimitive?.contentOrNull?.let(handler)
+                ClickResult.Consume
+              }
+            },
+    )
+  }
 }

@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -47,6 +48,8 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.BuildConfig
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.config.AppConfig
+import com.joegineered.ontheroad.cameras.LatLng
+import com.joegineered.ontheroad.chargers.ChargingStation
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.nav.RoutingStatus
@@ -67,7 +70,11 @@ import com.stadiamaps.ferrostar.maplibreui.runtime.NavigationMapState
 import com.stadiamaps.ferrostar.maplibreui.runtime.rememberNavigationMapState
 import com.stadiamaps.ferrostar.maplibreui.views.DynamicallyOrientingNavigationView
 import java.util.Locale
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import uniffi.ferrostar.GeographicCoordinate
 import kotlin.time.Duration.Companion.milliseconds
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.style.BaseStyle
@@ -89,7 +96,10 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   val arrival by viewModel.arrival.collectAsState()
   val cameras by AppGraph.speedCameras.cameras.collectAsState()
   val night by AppGraph.nightMode.isNight.collectAsState()
+  val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
+  val chargers by AppGraph.chargers.visible.collectAsState()
   val navigationMapState = rememberNavigationMapState()
+  ChargerViewportEffect(navigationMapState, enabled = showChargers)
   // Kept at screen level so the menu state lives as long as the screen, not the overlay slot.
   val settingsMenuOpen = remember { mutableStateOf(false) }
 
@@ -137,6 +147,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
         NavigationMapClickResult.Consume
       },
   ) { _ ->
+    if (showChargers) ChargerLayer(chargers, onClick = AppGraph.chargers::select)
     SpeedCameraLayer(cameras)
     DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
   }
@@ -145,7 +156,19 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
 @Composable
 private fun NavigatingOverlay(modifier: Modifier) {
   val warning by AppGraph.speedCameras.activeWarning.collectAsState()
+  val selectedCharger by AppGraph.chargers.selected.collectAsState()
+  val location by AppGraph.navigationViewModel.location.collectAsState()
   Box(modifier.fillMaxSize()) {
+    selectedCharger?.let { station ->
+      ChargerCard(
+          station = station,
+          distanceMetres = location?.coordinates?.let { LatLng(it.lat, it.lng).distanceTo(station) },
+          onNavigate = { navigateToCharger(station) },
+          onClose = { AppGraph.chargers.clearSelection() },
+          // Above the trip progress bar.
+          modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp),
+      )
+    }
     warning?.let {
       // Left edge, mid-height: clear of the instruction banner (top) and trip progress (bottom).
       CameraWarningBadge(it, Modifier.align(Alignment.CenterStart).padding(start = 16.dp))
@@ -167,6 +190,9 @@ private fun BrowsingOverlay(
 
   val scope = rememberCoroutineScope()
   var searching by remember { mutableStateOf(false) }
+  var showNearbyChargers by remember { mutableStateOf(false) }
+  val selectedCharger by AppGraph.chargers.selected.collectAsState()
+  val here = location?.coordinates?.let { LatLng(it.lat, it.lng) }
 
   Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
     SearchPanel(
@@ -176,6 +202,7 @@ private fun BrowsingOverlay(
         },
         modifier = Modifier.align(Alignment.TopCenter).padding(16.dp),
         onActiveChanged = { searching = it },
+        onChargersNearby = { showNearbyChargers = true },
     )
 
     // Hidden while searching so they don't cover the results list.
@@ -200,6 +227,29 @@ private fun BrowsingOverlay(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       arrival?.let { ArrivalCard(it, onDone = { viewModel.dismissArrival() }) }
+
+      if (showNearbyChargers && selectedCharger == null) {
+        NearbyChargersCard(
+            position = here,
+            onSelect = { station ->
+              AppGraph.chargers.select(station)
+              showNearbyChargers = false
+              scope.launch {
+                navigationMapState.showDestination(station.position.lat, station.position.lng)
+              }
+            },
+            onClose = { showNearbyChargers = false },
+        )
+      }
+
+      selectedCharger?.let { station ->
+        ChargerCard(
+            station = station,
+            distanceMetres = here?.distanceTo(station),
+            onNavigate = { navigateToCharger(station) },
+            onClose = { AppGraph.chargers.clearSelection() },
+        )
+      }
 
       if (location == null) {
         Card(Modifier.fillMaxWidth()) {
@@ -251,6 +301,37 @@ private fun BrowsingOverlay(
   }
 }
 
+/** Starts navigating to a charger, replacing the current route if there is one. */
+private fun navigateToCharger(station: ChargingStation) {
+  AppGraph.chargers.clearSelection()
+  AppGraph.navigationViewModel.startNavigation(
+      Destination(
+          GeographicCoordinate(station.position.lat, station.position.lng),
+          label = station.title,
+          subtitle = station.headline,
+      )
+  )
+}
+
+/** Loads chargers for the visible map area whenever the camera stops moving. */
+@OptIn(FlowPreview::class)
+@Composable
+private fun ChargerViewportEffect(mapState: NavigationMapState, enabled: Boolean) {
+  LaunchedEffect(mapState, enabled) {
+    if (!enabled) return@LaunchedEffect
+    // Re-emits when the camera moves and once the map is laid out (projection available).
+    snapshotFlow {
+          val position = mapState.cameraState.position
+          mapState.cameraState.projection?.queryVisibleBoundingBox()?.let { position.zoom to it }
+        }
+        .filterNotNull()
+        .debounce(300)
+        .collect { (zoom, bounds) ->
+          AppGraph.chargers.onViewportChanged(bounds.south, bounds.west, bounds.north, bounds.east, zoom)
+        }
+  }
+}
+
 /** Moves the map to a chosen destination, leaving room for the destination card below it. */
 private suspend fun NavigationMapState.showDestination(lat: Double, lng: Double) {
   cameraMode = NavigationCameraMode.FREE
@@ -272,6 +353,7 @@ private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<B
   val camerasEnabled by AppGraph.settings.cameraWarningsEnabled.collectAsState(initial = false)
   val voiceEnabled by AppGraph.settings.voiceGuidanceEnabled.collectAsState(initial = true)
   val themeMode by AppGraph.settings.themeMode.collectAsState(initial = ThemeMode.AUTO)
+  val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
   val scope = rememberCoroutineScope()
   var expanded by open
 
@@ -306,6 +388,9 @@ private fun SettingsMenu(viewModel: OtrNavigationViewModel, open: MutableState<B
       )
       ToggleMenuItem(stringResource(R.string.voice_guidance), voiceEnabled) { enabled ->
         scope.launch { AppGraph.settings.setVoiceGuidanceEnabled(enabled) }
+      }
+      ToggleMenuItem(stringResource(R.string.ev_chargers), showChargers) { show ->
+        scope.launch { AppGraph.settings.setShowChargers(show) }
       }
       ToggleMenuItem(stringResource(R.string.camera_warnings), camerasEnabled) { enabled ->
         scope.launch { AppGraph.settings.setCameraWarningsEnabled(enabled) }

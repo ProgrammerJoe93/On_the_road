@@ -41,6 +41,13 @@ class SettingsRepository(private val context: Context) {
     context.dataStore.edit { it[THEME_MODE] = mode.name }
   }
 
+  /** Whether EV chargers are shown on the map. */
+  val showChargers: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[SHOW_CHARGERS] ?: true }
+
+  suspend fun setShowChargers(show: Boolean) {
+    context.dataStore.edit { it[SHOW_CHARGERS] = show }
+  }
+
   suspend fun setCameraWarningsEnabled(enabled: Boolean) {
     context.dataStore.edit { it[CAMERA_WARNINGS] = enabled }
   }
@@ -56,6 +63,7 @@ class SettingsRepository(private val context: Context) {
     private val CAMERA_WARNINGS = booleanPreferencesKey("camera_warnings")
     private val VOICE_GUIDANCE = booleanPreferencesKey("voice_guidance")
     private val THEME_MODE = stringPreferencesKey("theme_mode")
+    private val SHOW_CHARGERS = booleanPreferencesKey("show_chargers")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This

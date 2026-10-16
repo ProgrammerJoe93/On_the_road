@@ -1,22 +1,15 @@
 package com.joegineered.ontheroad.cameras
 
 import android.util.Log
-import java.io.File
-import java.security.MessageDigest
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.days
 
 /**
  * Fetches the speed cameras that apply to a route. Overpass responses are cached on disk so that
  * repeated trips, and reroutes over the same roads, don't query the public server again.
  */
 class SpeedCameraRepository(
-    private val client: OverpassClient,
-    cacheRoot: File,
+    private val overpass: OverpassCache,
     private val matcher: RouteCameraMatcher = RouteCameraMatcher(),
-    private val cacheTtl: Duration = 7.days,
 ) {
-  private val cacheDir = File(cacheRoot, "overpass").apply { mkdirs() }
 
   /**
    * @param onPreliminary receives cameras matched by distance and direction only, as soon as they
@@ -60,18 +53,7 @@ class SpeedCameraRepository(
     return matcher.match(route, candidates.map { it.camera }, maneuverPoints, roads)
   }
 
-  private suspend fun cached(query: String): String {
-    val file = File(cacheDir, sha256(query) + ".json")
-    val fresh = file.exists() && System.currentTimeMillis() - file.lastModified() < cacheTtl.inWholeMilliseconds
-    if (fresh) return file.readText()
-
-    return client.execute(query).also { body -> file.writeText(body) }
-  }
-
-  private fun sha256(text: String): String =
-      MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") {
-        "%02x".format(it)
-      }
+  private suspend fun cached(query: String): String = overpass.query(query)
 
   private companion object {
     const val TAG = "SpeedCameraRepository"

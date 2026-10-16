@@ -31,7 +31,9 @@ class LiveCameraPipelineTest {
     // Helsinki centre to Espoo along Länsiväylä.
     val route = valhallaRoute(LatLng(60.1699, 24.9384), LatLng(60.2055, 24.6559))
     val repository =
-        SpeedCameraRepository(OverpassClient(http), Files.createTempDirectory("overpass").toFile())
+        SpeedCameraRepository(
+            OverpassCache(OverpassClient(http), Files.createTempDirectory("overpass").toFile())
+        )
 
     val cameras = repository.camerasForRoute(route, maneuverPoints = emptyList())
 

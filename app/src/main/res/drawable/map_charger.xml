@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for an EV charger: white lightning bolt on a green disc with a white rim. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp"
+    android:height="30dp"
+    android:viewportWidth="30"
+    android:viewportHeight="30">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M15,1a14,14 0,1 0,0.001 0z" />
+    <path android:fillColor="#FF2E7D32" android:pathData="M15,3.2a11.8,11.8 0,1 0,0.001 0z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M16.5,6L9.5,16.5h5L13.5,24l7,-10.5h-5z" />
+</vector>
