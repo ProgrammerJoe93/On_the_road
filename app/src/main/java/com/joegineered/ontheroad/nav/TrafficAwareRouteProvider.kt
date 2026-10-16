@@ -18,13 +18,14 @@ import uniffi.ferrostar.WellKnownRouteProvider
 /**
  * Valhalla routing that avoids roads currently closed (from live traffic), using Valhalla's
  * `exclude_polygons`. Request building and response parsing are Ferrostar's own Valhalla adapter;
- * only the options change per request. If no route exists around the closures (e.g. the
+ * only the options change per request. [baseOptions] is read for each request, so settings such as
+ * units apply to the next route. If no route exists around the closures (e.g. the
  * destination is on a closed road), it routes without them rather than failing.
  */
 class TrafficAwareRouteProvider(
     private val endpoint: String,
     private val profile: String,
-    private val baseOptions: Map<String, Any>,
+    private val baseOptions: () -> Map<String, Any>,
     private val httpClient: HttpClientProvider,
     private val closures: () -> List<TrafficEvent>,
 ) : CustomRouteProvider {
@@ -33,6 +34,7 @@ class TrafficAwareRouteProvider(
     val here = LatLng(userLocation.coordinates.lat, userLocation.coordinates.lng)
     val destination = waypoints.lastOrNull()?.coordinate?.let { LatLng(it.lat, it.lng) }
     val polygons = ClosureAvoidance.excludePolygons(closures(), from = here, to = destination)
+    val baseOptions = baseOptions()
     if (polygons.isEmpty()) return route(baseOptions, userLocation, waypoints)
     return try {
       route(baseOptions + ("exclude_polygons" to polygons), userLocation, waypoints)

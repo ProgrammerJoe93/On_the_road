@@ -49,7 +49,9 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.BuildConfig
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.chargers.SocketType
+import com.joegineered.ontheroad.settings.SpeechRate
 import com.joegineered.ontheroad.settings.ThemeMode
+import com.joegineered.ontheroad.settings.UnitSystem
 import kotlinx.coroutines.launch
 
 /** Pages of the full-screen settings menu. */
@@ -116,6 +118,9 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
   val scope = rememberCoroutineScope()
   val themeMode by settings.themeMode.collectAsState(initial = ThemeMode.AUTO)
   val voiceEnabled by settings.voiceGuidanceEnabled.collectAsState(initial = true)
+  val turnInstructions by settings.turnInstructionsSpoken.collectAsState(initial = true)
+  val speechRate by settings.speechRate.collectAsState(initial = SpeechRate.NORMAL)
+  val units by settings.unitSystem.collectAsState(initial = UnitSystem.AUTO)
   val camerasEnabled by settings.cameraWarningsEnabled.collectAsState(initial = false)
   val liveTraffic by settings.liveTrafficEnabled.collectAsState(initial = true)
   val showChargers by settings.showChargers.collectAsState(initial = true)
@@ -125,25 +130,17 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
   val context = LocalContext.current
 
   SectionHeader(stringResource(R.string.settings_section_map))
-  Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-    Text(stringResource(R.string.night_mode), style = MaterialTheme.typography.bodyLarge)
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-      val modes =
+  ChoiceRow(
+      title = stringResource(R.string.night_mode),
+      options =
           listOf(
               ThemeMode.AUTO to R.string.night_mode_auto,
               ThemeMode.DAY to R.string.night_mode_day,
               ThemeMode.NIGHT to R.string.night_mode_night,
-          )
-      modes.forEachIndexed { index, (mode, label) ->
-        SegmentedButton(
-            selected = themeMode == mode,
-            onClick = { scope.launch { settings.setThemeMode(mode) } },
-            shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-        ) {
-          Text(stringResource(label))
-        }
-      }
-    }
+          ),
+      selected = themeMode,
+  ) {
+    scope.launch { settings.setThemeMode(it) }
   }
   NavigationRow(
       title = stringResource(R.string.ev_chargers),
@@ -177,6 +174,27 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
   ) {
     scope.launch { settings.setVoiceGuidanceEnabled(it) }
   }
+  if (voiceEnabled) {
+    SwitchRow(
+        title = stringResource(R.string.turn_instructions),
+        summary = stringResource(R.string.turn_instructions_summary),
+        checked = turnInstructions,
+    ) {
+      scope.launch { settings.setTurnInstructionsSpoken(it) }
+    }
+    ChoiceRow(
+        title = stringResource(R.string.speech_rate),
+        options =
+            listOf(
+                SpeechRate.SLOW to R.string.speech_rate_slow,
+                SpeechRate.NORMAL to R.string.speech_rate_normal,
+                SpeechRate.FAST to R.string.speech_rate_fast,
+            ),
+        selected = speechRate,
+    ) {
+      scope.launch { settings.setSpeechRate(it) }
+    }
+  }
   SwitchRow(
       title = stringResource(R.string.live_traffic),
       summary = stringResource(R.string.live_traffic_summary),
@@ -190,6 +208,18 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
       checked = camerasEnabled,
   ) {
     scope.launch { settings.setCameraWarningsEnabled(it) }
+  }
+  ChoiceRow(
+      title = stringResource(R.string.units),
+      options =
+          listOf(
+              UnitSystem.AUTO to R.string.units_auto,
+              UnitSystem.METRIC to R.string.units_metric,
+              UnitSystem.IMPERIAL to R.string.units_imperial,
+          ),
+      selected = units,
+  ) {
+    scope.launch { settings.setUnitSystem(it) }
   }
 
   if (BuildConfig.DEBUG) {
@@ -409,6 +439,30 @@ private fun SettingText(title: String, summary: String?, modifier: Modifier = Mo
     Text(title, style = MaterialTheme.typography.bodyLarge)
     summary?.let {
       Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+  }
+}
+
+/** A titled row of segmented buttons, one per option (value to label). */
+@Composable
+private fun <T> ChoiceRow(
+    title: String,
+    options: List<Pair<T, Int>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+  Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Text(title, style = MaterialTheme.typography.bodyLarge)
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+      options.forEachIndexed { index, (value, label) ->
+        SegmentedButton(
+            selected = selected == value,
+            onClick = { onSelect(value) },
+            shape = SegmentedButtonDefaults.itemShape(index, options.size),
+        ) {
+          Text(stringResource(label))
+        }
+      }
     }
   }
 }

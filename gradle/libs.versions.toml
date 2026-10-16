@@ -19,6 +19,7 @@ junit = "4.13.2"
 
 [libraries]
 ferrostar-core = { module = "com.stadiamaps.ferrostar:core", version.ref = "ferrostar" }
+ferrostar-ui-formatters = { module = "com.stadiamaps.ferrostar:ui-formatters", version.ref = "ferrostar" }
 ferrostar-ui-compose = { module = "com.stadiamaps.ferrostar:ui-compose", version.ref = "ferrostar" }
 ferrostar-ui-maplibre = { module = "com.stadiamaps.ferrostar:ui-maplibre", version.ref = "ferrostar" }
 ferrostar-google-play-services = { module = "com.stadiamaps.ferrostar:google-play-services", version.ref = "ferrostar" }

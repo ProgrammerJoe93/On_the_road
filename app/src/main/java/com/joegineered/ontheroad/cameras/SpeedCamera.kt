@@ -1,5 +1,7 @@
 package com.joegineered.ontheroad.cameras
 
+import kotlin.math.roundToInt
+
 /** A speed camera from OpenStreetMap. */
 data class SpeedCamera(
     /** OSM node id. */
@@ -47,6 +49,10 @@ fun parseMaxSpeedKmh(value: String?): Int? {
     trimmed.toIntOrNull()
   }
 }
+
+/** A km/h limit in the display units; mph limits parsed by [parseMaxSpeedKmh] round-trip. */
+fun displayedSpeedLimit(kmh: Int, metric: Boolean): Int =
+    if (metric) kmh else (kmh / 1.609344).roundToInt()
 
 private val CARDINALS =
     mapOf(

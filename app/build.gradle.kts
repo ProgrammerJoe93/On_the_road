@@ -71,6 +71,7 @@ dependencies {
 
   implementation(libs.ferrostar.core)
   implementation(libs.ferrostar.ui.compose)
+  implementation(libs.ferrostar.ui.formatters)
   implementation(libs.ferrostar.ui.maplibre)
   implementation(libs.ferrostar.google.play.services)
   implementation(libs.ferrostar.car.app)

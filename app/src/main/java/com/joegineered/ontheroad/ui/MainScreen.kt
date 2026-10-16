@@ -49,6 +49,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.offset
+import com.stadiamaps.ferrostar.ui.formatters.LocalizedDistanceFormatter
 import com.stadiamaps.ferrostar.composeui.config.withInstructionsView
 import com.stadiamaps.ferrostar.composeui.views.components.InstructionsView
 import androidx.compose.ui.res.painterResource
@@ -129,6 +130,13 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   // Bottom-left corner of the turn banner (root coordinates), to place the road signs below it.
   val bannerAnchor = remember { mutableStateOf<Offset?>(null) }
   val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
+  val metric = AppConfig.unitSystem.collectAsState().value.isMetric()
+  val distanceFormatter =
+      remember(metric) {
+        LocalizedDistanceFormatter(
+            distanceMeasurementSystemOverride = AppConfig.distanceMeasurementSystem(metric)
+        )
+      }
 
   Box(Modifier.fillMaxSize()) {
     DynamicallyOrientingNavigationView(
@@ -149,6 +157,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                               bannerAnchor.value = Offset(bounds.left, bounds.bottom)
                             },
                         instructions = instructions,
+                        distanceFormatter = distanceFormatter,
                         theme = DefaultNavigationUITheme.instructionRowTheme,
                         remainingSteps = state.remainingSteps,
                         distanceToNextManeuver = state.progress?.distanceToNextManeuver,
@@ -165,14 +174,15 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                               speedReading(
                                   speed,
                                   state.currentAnnotation?.speedLimit,
-                                  AppConfig.usesMetricUnits,
+                                  metric,
                               ),
-                          metric = AppConfig.usesMetricUnits,
+                          metric = metric,
                           // Aligned with the left edge of the banner, signs and progress bar.
                         modifier = Modifier.padding(bottom = 8.dp),
                       )
                       TripProgressView(
                           theme = DefaultNavigationUITheme.tripProgressViewTheme,
+                          distanceFormatter = distanceFormatter,
                           progress = progress,
                           onTapExit = onTapExit,
                       )

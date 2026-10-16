@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.cameras.CameraWarning
+import com.joegineered.ontheroad.cameras.displayedSpeedLimit
 import com.joegineered.ontheroad.config.AppConfig
 import kotlin.math.roundToInt
 
@@ -44,7 +45,7 @@ fun CameraWarningBadge(warning: CameraWarning, modifier: Modifier = Modifier) {
     )
     warning.camera.maxSpeedKmh?.let { limit ->
       Text(
-          text = limit.toString(),
+          text = displayedSpeedLimit(limit, AppConfig.usesMetricUnits).toString(),
           color = Color.Black,
           style = MaterialTheme.typography.titleMedium,
           modifier =

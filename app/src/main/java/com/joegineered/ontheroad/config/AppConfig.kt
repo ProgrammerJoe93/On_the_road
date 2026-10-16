@@ -1,7 +1,10 @@
 package com.joegineered.ontheroad.config
 
 import com.joegineered.ontheroad.BuildConfig
+import com.joegineered.ontheroad.settings.UnitSystem
+import com.stadiamaps.ferrostar.ui.formatters.DistanceMeasurementSystem
 import java.util.Locale
+import kotlinx.coroutines.flow.MutableStateFlow
 
 object AppConfig {
   /** OpenFreeMap vector styles; free and keyless. Data © OpenStreetMap contributors (ODbL). */
@@ -42,7 +45,16 @@ object AppConfig {
         ?: "en-US"
   }
 
-  /** Imperial units only where the device region uses them for road distances. */
+  /**
+   * The units setting, mirrored here by `AppGraph` so formatting code that isn't composed (route
+   * requests, voice text) can read it. Compose code should collect it, to update on changes.
+   */
+  val unitSystem = MutableStateFlow(UnitSystem.AUTO)
+
   val usesMetricUnits: Boolean
-    get() = Locale.getDefault().country !in setOf("US", "LR", "MM")
+    get() = unitSystem.value.isMetric()
+
+  /** Ferrostar's distance formatting for [metric] units. */
+  fun distanceMeasurementSystem(metric: Boolean = usesMetricUnits) =
+      if (metric) DistanceMeasurementSystem.SI else DistanceMeasurementSystem.IMPERIAL
 }

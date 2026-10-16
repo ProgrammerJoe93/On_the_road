@@ -231,6 +231,7 @@ class CarNavigationScreen(
       // UI leaves visible.
       if (uiState?.isNavigating() == true) {
         val speed by viewModel.speedMetresPerSecond.collectAsState()
+        val metric = AppConfig.unitSystem.collectAsState().value.isMetric()
         val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
         Box(Modifier.fillMaxSize().padding(normalPadding).padding(8.dp)) {
           RoadSigns(
@@ -243,9 +244,9 @@ class CarNavigationScreen(
                   speedReading(
                       speed,
                       uiState?.currentAnnotation?.speedLimit,
-                      AppConfig.usesMetricUnits,
+                      metric,
                   ),
-              metric = AppConfig.usesMetricUnits,
+              metric = metric,
               modifier = Modifier.align(Alignment.BottomStart),
           )
         }

@@ -8,6 +8,7 @@ import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.config.AppConfig
 import com.stadiamaps.ferrostar.core.AndroidTtsObserver
 import com.stadiamaps.ferrostar.core.AndroidTtsStatusListener
+import com.stadiamaps.ferrostar.core.SpokenInstructionObserver
 import java.util.Locale
 import java.util.UUID
 import uniffi.ferrostar.SpokenInstruction
@@ -20,6 +21,28 @@ import uniffi.ferrostar.SpokenInstruction
  * like other navigation prompts, and it all goes through one queue, so prompts never overlap.
  */
 class NavigationVoice(private val context: Context, val ttsObserver: AndroidTtsObserver) {
+
+  /** Whether Ferrostar's turn instructions are spoken; [announce] speaks either way. */
+  @Volatile var turnInstructionsSpoken = true
+
+  /** Multiplier of the engine's normal speech rate; applied when the engine is ready. */
+  @Volatile
+  var speechRate = 1.0f
+    set(value) {
+      field = value
+      ttsObserver.tts?.setSpeechRate(value)
+    }
+
+  /**
+   * What Ferrostar speaks turn instructions through: [ttsObserver], skipping them when they're
+   * turned off. Muting is still the observer's own, so the mute button silences everything.
+   */
+  val instructionObserver: SpokenInstructionObserver =
+      object : SpokenInstructionObserver by ttsObserver {
+        override fun onSpokenInstructionTrigger(spokenInstruction: SpokenInstruction) {
+          if (turnInstructionsSpoken) ttsObserver.onSpokenInstructionTrigger(spokenInstruction)
+        }
+      }
 
   private val statusListener =
       object : AndroidTtsStatusListener {
@@ -36,6 +59,7 @@ class NavigationVoice(private val context: Context, val ttsObserver: AndroidTtsO
           )
           val locale = chooseLocale(tts)
           tts.language = locale
+          tts.setSpeechRate(speechRate)
           tts.addEarcon(CAMERA_EARCON, context.packageName, R.raw.camera_chime)
           Log.i(TAG, "Voice guidance ready: $locale")
         }

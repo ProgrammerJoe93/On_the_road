@@ -41,6 +41,7 @@ import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
 import com.stadiamaps.ferrostar.core.location.SimulatedLocationProvider
 import com.stadiamaps.ferrostar.core.service.FerrostarForegroundServiceManager
 import com.stadiamaps.ferrostar.googleplayservices.FusedNavigationLocationProvider
+import com.stadiamaps.ferrostar.ui.formatters.LocalizedDistanceFormatter
 import java.time.Duration
 import okhttp3.OkHttpClient
 import org.maplibre.compose.offline.getOfflineManager
@@ -64,15 +65,24 @@ object AppGraph {
     if (::appContext.isInitialized) return
     appContext = context.applicationContext
     voice.start()
-    syncVoiceGuidanceSetting()
+    syncSettings()
   }
 
   /**
-   * Keeps the voice guidance setting and the mute button in sync, so muting during navigation is
-   * remembered and the setting applies to the next trip.
+   * Applies settings that live outside Compose. The voice guidance setting and the mute button
+   * stay in sync both ways, so muting during navigation is remembered for the next trip.
    */
-  private fun syncVoiceGuidanceSetting() {
+  private fun syncSettings() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    scope.launch {
+      settings.unitSystem.collect { units ->
+        AppConfig.unitSystem.value = units
+        notificationDistanceFormatter.distanceMeasurementSystemOverride =
+            AppConfig.distanceMeasurementSystem()
+      }
+    }
+    scope.launch { settings.turnInstructionsSpoken.collect { voice.turnInstructionsSpoken = it } }
+    scope.launch { settings.speechRate.collect { voice.speechRate = it.multiplier } }
     scope.launch {
       settings.voiceGuidanceEnabled.collect { enabled ->
         if (ttsObserver.isMuted == enabled) ttsObserver.setMuted(!enabled)
@@ -127,12 +137,19 @@ object AppGraph {
 
   val voice: NavigationVoice by lazy { NavigationVoice(appContext, ttsObserver) }
 
+  /** Distances in the navigation notification; its units follow the setting. */
+  private val notificationDistanceFormatter: LocalizedDistanceFormatter by lazy {
+    LocalizedDistanceFormatter(distanceMeasurementSystemOverride = AppConfig.distanceMeasurementSystem())
+  }
+
   val ferrostarCore: FerrostarCore by lazy {
-    val options =
-        mapOf(
-            "language" to AppConfig.instructionLanguage(),
-            "units" to if (AppConfig.usesMetricUnits) "kilometers" else "miles",
-        )
+    // Read per request, so spoken distances ("in 500 metres") follow the units setting.
+    val options = {
+      mapOf(
+          "language" to AppConfig.instructionLanguage(),
+          "units" to if (AppConfig.usesMetricUnits) "kilometers" else "miles",
+      )
+    }
     // Valhalla, avoiding roads that live traffic reports as closed.
     val routeProvider =
         TrafficAwareRouteProvider(
@@ -150,13 +167,16 @@ object AppGraph {
             foregroundServiceManager =
                 FerrostarForegroundServiceManager(
                     appContext,
-                    DefaultForegroundNotificationBuilder(appContext),
+                    DefaultForegroundNotificationBuilder(
+                        appContext,
+                        distanceFormatter = notificationDistanceFormatter,
+                    ),
                 ),
             navigationControllerConfig = navigationControllerConfig(),
         )
         .also {
           // Must be set before the view model is created: it captures the mute state flow.
-          it.spokenInstructionObserver = ttsObserver
+          it.spokenInstructionObserver = voice.instructionObserver
         }
   }
 

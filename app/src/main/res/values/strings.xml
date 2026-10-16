@@ -83,6 +83,16 @@
     <string name="camera_warnings_summary">Chime and voice warning before speed cameras</string>
     <string name="simulate_drive_summary">Replay routes instead of using GPS</string>
     <string name="unit_mph">mph</string>
+    <string name="units">Units</string>
+    <string name="units_auto">Automatic</string>
+    <string name="units_metric">Metric</string>
+    <string name="units_imperial">Imperial</string>
+    <string name="turn_instructions">Spoken turn instructions</string>
+    <string name="turn_instructions_summary">When off, only warnings are spoken</string>
+    <string name="speech_rate">Speech rate</string>
+    <string name="speech_rate_slow">Slow</string>
+    <string name="speech_rate_normal">Normal</string>
+    <string name="speech_rate_fast">Fast</string>
     <string name="search_hint">Search address or place</string>
     <string name="clear_search">Clear search</string>
     <string name="recent_destinations">Recent</string>

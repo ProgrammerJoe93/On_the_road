@@ -33,6 +33,34 @@ class SettingsRepository(private val context: Context) {
     context.dataStore.edit { it[VOICE_GUIDANCE] = enabled }
   }
 
+  /** Whether turn instructions are spoken. When off, camera and traffic warnings still are. */
+  val turnInstructionsSpoken: Flow<Boolean> =
+      context.dataStore.data.map { prefs -> prefs[TURN_INSTRUCTIONS_SPOKEN] ?: true }
+
+  suspend fun setTurnInstructionsSpoken(spoken: Boolean) {
+    context.dataStore.edit { it[TURN_INSTRUCTIONS_SPOKEN] = spoken }
+  }
+
+  /** How fast the navigation voice speaks. */
+  val speechRate: Flow<SpeechRate> =
+      context.dataStore.data.map { prefs ->
+        prefs[SPEECH_RATE]?.let { runCatching { SpeechRate.valueOf(it) }.getOrNull() } ?: SpeechRate.NORMAL
+      }
+
+  suspend fun setSpeechRate(rate: SpeechRate) {
+    context.dataStore.edit { it[SPEECH_RATE] = rate.name }
+  }
+
+  /** Units for distances and speeds. */
+  val unitSystem: Flow<UnitSystem> =
+      context.dataStore.data.map { prefs ->
+        prefs[UNIT_SYSTEM]?.let { runCatching { UnitSystem.valueOf(it) }.getOrNull() } ?: UnitSystem.AUTO
+      }
+
+  suspend fun setUnitSystem(units: UnitSystem) {
+    context.dataStore.edit { it[UNIT_SYSTEM] = units.name }
+  }
+
   /** Day/night colours for the map and UI. */
   val themeMode: Flow<ThemeMode> =
       context.dataStore.data.map { prefs ->
@@ -97,6 +125,9 @@ class SettingsRepository(private val context: Context) {
     private val LIVE_TRAFFIC = booleanPreferencesKey("live_traffic")
     private val CHARGER_PLUG_TYPES = stringSetPreferencesKey("charger_plug_types")
     private val SAVE_ROUTE_MAPS = booleanPreferencesKey("save_route_maps")
+    private val TURN_INSTRUCTIONS_SPOKEN = booleanPreferencesKey("turn_instructions_spoken")
+    private val SPEECH_RATE = stringPreferencesKey("speech_rate")
+    private val UNIT_SYSTEM = stringPreferencesKey("unit_system")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This
@@ -126,4 +157,30 @@ enum class ThemeMode {
   AUTO,
   DAY,
   NIGHT,
+}
+
+/** Units for distances and speeds. */
+enum class UnitSystem {
+  /** Imperial only where the device region uses it for road distances. */
+  AUTO,
+  METRIC,
+  IMPERIAL;
+
+  fun isMetric(countryCode: String = Locale.getDefault().country): Boolean =
+      when (this) {
+        AUTO -> countryCode.uppercase(Locale.ROOT) !in IMPERIAL_COUNTRIES
+        METRIC -> true
+        IMPERIAL -> false
+      }
+
+  private companion object {
+    val IMPERIAL_COUNTRIES = setOf("US", "LR", "MM")
+  }
+}
+
+/** Speech rates for the navigation voice, as multipliers of the engine's normal rate. */
+enum class SpeechRate(val multiplier: Float) {
+  SLOW(0.8f),
+  NORMAL(1.0f),
+  FAST(1.25f),
 }

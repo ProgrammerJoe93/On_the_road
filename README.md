@@ -9,7 +9,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
 - **Routing:** car routes from [Valhalla](https://github.com/valhalla/valhalla), with instructions in the device language.
 - **Turn-by-turn navigation:**
   - lane guidance and a speed-limit sign;
-  - spoken instructions;
+  - spoken instructions, with a choice of speech rate, or warnings only;
+  - metric or imperial units, by region or chosen in settings;
   - rerouting when you leave the route;
   - background navigation through a foreground service.
 - **Speed camera warnings:**
