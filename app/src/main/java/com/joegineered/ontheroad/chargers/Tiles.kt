@@ -1,5 +1,6 @@
 package com.joegineered.ontheroad.chargers
 
+import com.joegineered.ontheroad.cameras.LatLng
 import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.cos
@@ -16,6 +17,9 @@ data class Tile(val x: Int, val y: Int, val zoom: Int) {
   val south: Double get() = latitudeOf(y + 1)
 
   private val n: Double get() = (1 shl zoom).toDouble()
+
+  fun contains(position: LatLng): Boolean =
+      position.lat in south..north && position.lng in west..east
 
   private fun latitudeOf(tileY: Int): Double =
       atan(sinh(PI * (1 - 2 * tileY / n))) * 180.0 / PI

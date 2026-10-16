@@ -16,9 +16,12 @@ import com.stadiamaps.ferrostar.core.NavigationState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
@@ -57,7 +60,13 @@ sealed interface RoutingStatus {
 
   /** The router found no drivable route, e.g. to a pedestrian zone or a bus-only terminal. */
   data object NoRoute : RoutingStatus
+
+  /** No internet connection; routes are planned online. */
+  data object Offline : RoutingStatus
 }
+
+/** A trip to a new destination has started (not a reroute). */
+data class TripStart(val destinationName: String, val route: List<GeographicCoordinate>)
 
 /**
  * The single navigation session for the app. Both the phone UI and the Android Auto screens
@@ -70,6 +79,7 @@ class OtrNavigationViewModel(
     private val recentDestinations: RecentDestinations,
     /** Whether the navigation voice is still speaking, so arrival doesn't cut it off. */
     private val isSpeaking: () -> Boolean = { false },
+    private val isOnline: () -> Boolean = { true },
 ) : DefaultNavigationViewModel(ferrostarCore, valhallaExtendedOSRMAnnotationPublisher()) {
 
   private val hasLocationPermission = MutableStateFlow(false)
@@ -94,6 +104,9 @@ class OtrNavigationViewModel(
   private val _speed = MutableStateFlow<Double?>(null)
   /** Current speed in m/s while navigating; null when unknown or not navigating. */
   val speedMetresPerSecond: StateFlow<Double?> = _speed.asStateFlow()
+
+  private val _tripStarts = MutableSharedFlow<TripStart>(extraBufferCapacity = 1)
+  val tripStarts: SharedFlow<TripStart> = _tripStarts.asSharedFlow()
 
   /** The destination of the trip in progress. */
   private var activeDestination: Destination? = null
@@ -223,6 +236,7 @@ class OtrNavigationViewModel(
 
         if (_simulated.value) locationProvider.enableSimulationOn(route)
 
+        val newTrip = destination != activeDestination
         setDestination(destination.label)
         activeDestination = destination
         parkedNearby.reset()
@@ -234,18 +248,21 @@ class OtrNavigationViewModel(
         }
         _selectedDestination.value = null
         _routingStatus.value = RoutingStatus.Idle
+        val place = destination.toPlace(destination.coordinateText())
+        if (newTrip) _tripStarts.tryEmit(TripStart(place.title, route.geometry))
         // Remembering the destination is best-effort; it must not fail an active session.
-        runCatching {
-              recentDestinations.add(destination.toPlace(destination.coordinateText()))
-            }
+        runCatching { recentDestinations.add(place) }
             .onFailure { Log.w(TAG, "Could not save recent destination", it) }
       } catch (e: Exception) {
         Log.e(TAG, "Routing failed", e)
         // Valhalla answers HTTP 400 ("NoRoute") when the destination can't be reached by car.
         val noRoute = e.message?.contains("status code 400") == true
         _routingStatus.value =
-            if (noRoute) RoutingStatus.NoRoute
-            else RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
+            when {
+              noRoute -> RoutingStatus.NoRoute
+              !isOnline() -> RoutingStatus.Offline
+              else -> RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
+            }
       }
     }
   }

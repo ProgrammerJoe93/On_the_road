@@ -12,6 +12,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,6 +24,7 @@ import okhttp3.Request
 class PhotonGeocoder(
     private val httpClient: OkHttpClient,
     private val endpoint: String = "https://photon.komoot.io/api/",
+    private val reverseEndpoint: String = "https://photon.komoot.io/reverse",
 ) {
 
   /** Places matching [query], ranked with a bias towards [near] when given. */
@@ -46,14 +48,30 @@ class PhotonGeocoder(
                   }
                 }
                 .build()
-        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
-        val body =
-            httpClient.newCall(request).execute().use { response ->
-              if (!response.isSuccessful) throw IOException("Photon HTTP ${response.code}")
-              response.body.string()
-            }
-        parse(body, Locale.getDefault().country)
+        parse(get(url), Locale.getDefault().country)
       }
+
+  /** The town or area at a point, e.g. to name an offline map area. */
+  suspend fun locality(lat: Double, lng: Double): String? =
+      withContext(Dispatchers.IO) {
+        val url =
+            reverseEndpoint
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("lat", lat.toString())
+                .addQueryParameter("lon", lng.toString())
+                .addQueryParameter("lang", photonLanguage())
+                .build()
+        parseLocality(get(url))
+      }
+
+  private fun get(url: HttpUrl): String {
+    val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+    return httpClient.newCall(request).execute().use { response ->
+      if (!response.isSuccessful) throw IOException("Photon HTTP ${response.code}")
+      response.body.string()
+    }
+  }
 
   companion object {
     private const val USER_AGENT = "OnTheRoad/0.1 (Android navigation app)"
@@ -78,6 +96,14 @@ class PhotonGeocoder(
       return features
           .mapNotNull { feature -> (feature as? JsonObject)?.toPlace(homeCountry) }
           .distinctBy { it.title to it.subtitle }
+    }
+
+    /** The most specific settlement name in a Photon reverse-geocoding response. */
+    fun parseLocality(body: String): String? {
+      val features = json.parseToJsonElement(body).jsonObject["features"] as? JsonArray
+      val props = (features?.firstOrNull() as? JsonObject)?.get("properties") as? JsonObject ?: return null
+      return listOf("city", "town", "village", "locality", "district", "county", "state", "name")
+          .firstNotNullOfOrNull { key -> props[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } }
     }
 
     private fun JsonObject.toPlace(homeCountry: String): Place? {

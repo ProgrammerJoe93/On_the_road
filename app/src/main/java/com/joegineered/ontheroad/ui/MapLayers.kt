@@ -17,6 +17,10 @@ import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.value.IconPitchAlignment
 import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.FillLayer
+import org.maplibre.compose.layers.LineLayer
+import org.maplibre.compose.offline.OfflinePack
+import org.maplibre.compose.offline.rememberOfflinePacksSource
 import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
@@ -124,4 +128,24 @@ fun ChargerLayer(chargers: List<ChargingStation>, onClick: ((String) -> Unit)? =
             },
     )
   }
+}
+
+/** Outlines of saved offline areas, shown while picking a new one. */
+@Composable
+@MaplibreComposable
+fun OfflineAreasLayer(packs: Set<OfflinePack>) {
+  if (packs.isEmpty()) return
+  val source = rememberOfflinePacksSource(packs)
+  FillLayer(
+      id = "otr-offline-areas-fill",
+      source = source,
+      color = const(Color(0xFF1E5AA8)),
+      opacity = const(0.12f),
+  )
+  LineLayer(
+      id = "otr-offline-areas-line",
+      source = source,
+      color = const(Color(0xFF1E5AA8)),
+      width = const(2.dp),
+  )
 }

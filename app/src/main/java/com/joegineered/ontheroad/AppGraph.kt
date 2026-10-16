@@ -20,7 +20,9 @@ import com.joegineered.ontheroad.nav.TrafficAwareRouteProvider
 import com.joegineered.ontheroad.traffic.DigitrafficClient
 import com.joegineered.ontheroad.traffic.TrafficController
 import com.joegineered.ontheroad.traffic.trafficAnnouncement
+import com.joegineered.ontheroad.net.NetworkMonitor
 import com.joegineered.ontheroad.night.NightModeController
+import com.joegineered.ontheroad.offline.OfflineMaps
 import com.joegineered.ontheroad.search.PhotonGeocoder
 import com.joegineered.ontheroad.search.RecentDestinations
 import com.joegineered.ontheroad.settings.SettingsRepository
@@ -41,6 +43,7 @@ import com.stadiamaps.ferrostar.core.service.FerrostarForegroundServiceManager
 import com.stadiamaps.ferrostar.googleplayservices.FusedNavigationLocationProvider
 import java.time.Duration
 import okhttp3.OkHttpClient
+import org.maplibre.compose.offline.getOfflineManager
 import uniffi.ferrostar.CourseFiltering
 import uniffi.ferrostar.NavigationControllerConfig
 import uniffi.ferrostar.RouteDeviationTracking
@@ -93,8 +96,24 @@ object AppGraph {
     httpClient.newBuilder().callTimeout(Duration.ofSeconds(90)).readTimeout(Duration.ofSeconds(90)).build()
   }
 
+  val network: NetworkMonitor by lazy { NetworkMonitor(appContext) }
+
+  /** In app storage rather than the cache, so data saved with offline areas isn't cleared. */
   val overpass: OverpassCache by lazy {
-    OverpassCache(OverpassClient(overpassHttpClient), appContext.cacheDir)
+    OverpassCache(OverpassClient(overpassHttpClient), appContext.filesDir, isOnline = { network.isOnline })
+  }
+
+  private val chargerRepository: ChargerRepository by lazy { ChargerRepository(overpass) }
+
+  val offlineMaps: OfflineMaps by lazy {
+    OfflineMaps(
+        manager = getOfflineManager(appContext),
+        httpClient = httpClient,
+        network = network.status,
+        chargers = chargerRepository,
+        saveRouteMaps = settings.saveRouteMaps,
+        tripStarts = navigationViewModel.tripStarts,
+    )
   }
 
   val locationProvider: NavigationLocationProvider by lazy {
@@ -147,6 +166,7 @@ object AppGraph {
         locationProvider,
         recentDestinations,
         isSpeaking = { ttsObserver.tts?.isSpeaking == true },
+        isOnline = { network.isOnline },
     )
   }
 
@@ -155,7 +175,7 @@ object AppGraph {
   val geocoder: PhotonGeocoder by lazy { PhotonGeocoder(httpClient) }
 
   val chargers: ChargerController by lazy {
-    ChargerController(ChargerRepository(overpass), CoroutineScope(SupervisorJob() + Dispatchers.IO))
+    ChargerController(chargerRepository, CoroutineScope(SupervisorJob() + Dispatchers.IO))
   }
 
   val traffic: TrafficController by lazy {

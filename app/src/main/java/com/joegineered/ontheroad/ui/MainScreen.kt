@@ -60,6 +60,7 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.BuildConfig
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.config.AppConfig
+import com.joegineered.ontheroad.offline.OfflineAreaKind
 import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.chargers.ChargingStation
 import com.joegineered.ontheroad.chargers.SocketType
@@ -105,6 +106,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   LaunchedEffect(Unit) {
     AppGraph.speedCameras.start()
     AppGraph.startTraffic()
+    AppGraph.offlineMaps.start()
   }
 
   val uiState by viewModel.navigationUiState.collectAsState()
@@ -120,6 +122,10 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   val navigationMapState = rememberNavigationMapState()
   ChargerViewportEffect(navigationMapState, enabled = showChargers)
   var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
+  var pickingOfflineArea by remember { mutableStateOf(false) }
+  val offlineAreas by AppGraph.offlineMaps.areas.collectAsState()
+  // A trip started from the car ends picking.
+  LaunchedEffect(uiState.isNavigating()) { if (uiState.isNavigating()) pickingOfflineArea = false }
   // Bottom-left corner of the turn banner (root coordinates), to place the road signs below it.
   val bannerAnchor = remember { mutableStateOf<Offset?>(null) }
   val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
@@ -176,6 +182,12 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                 .withCustomOverlayView { modifier ->
                   if (uiState.isNavigating()) {
                     NavigatingOverlay(modifier, bannerAnchor.value)
+                  } else if (pickingOfflineArea) {
+                    OfflineAreaPicker(modifier, navigationMapState) { downloaded ->
+                      pickingOfflineArea = false
+                      // Back to the list, which shows the download's progress.
+                      if (downloaded) settingsPage = SettingsPage.OFFLINE_MAPS
+                    }
                   } else {
                     BrowsingOverlay(
                         modifier,
@@ -197,9 +209,27 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
       }
       SpeedCameraLayer(cameras)
       DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
+      if (pickingOfflineArea && !uiState.isNavigating()) {
+        // One pack per area: the day style's, as the night pack covers the same area.
+        val packs =
+            offlineAreas
+                .filter { it.info.kind == OfflineAreaKind.AREA }
+                .flatMap { area -> area.newest.map { it.pack }.filter { it.definition.styleUrl == AppConfig.MAP_STYLE_URL } }
+                .toSet()
+        OfflineAreasLayer(packs)
+      }
     }
 
-    settingsPage?.let { page -> SettingsScreen(page, onNavigate = { settingsPage = it }) }
+    settingsPage?.let { page ->
+      SettingsScreen(
+          page,
+          onNavigate = { settingsPage = it },
+          onPickOfflineArea = {
+            settingsPage = null
+            pickingOfflineArea = true
+          },
+      )
+    }
   }
 }
 
@@ -237,6 +267,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
         if (landscape) Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 16.dp).offsetToRightHalf()
         else Modifier.align(Alignment.CenterStart).padding(start = 16.dp)
     Column(badgeModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      OfflineIndicator()
       warning?.let { CameraWarningBadge(it) }
       trafficWarning?.let { TrafficWarningBadge(it) }
     }
@@ -338,6 +369,7 @@ private fun BrowsingOverlay(
                 .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+      OfflineIndicator()
       arrival?.let { ArrivalCard(it, onDone = { viewModel.dismissArrival() }) }
 
       if (showNearbyChargers && selectedCharger == null) {
@@ -392,6 +424,8 @@ private fun BrowsingOverlay(
                   )
               RoutingStatus.NoRoute ->
                   Text(stringResource(R.string.no_route), color = MaterialTheme.colorScheme.error)
+              RoutingStatus.Offline ->
+                  Text(stringResource(R.string.route_offline), color = MaterialTheme.colorScheme.error)
               else -> Unit
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

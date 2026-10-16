@@ -1,6 +1,19 @@
 package com.joegineered.ontheroad.ui
 
+import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.joegineered.ontheroad.offline.OfflineArea
+import com.joegineered.ontheroad.offline.OfflineAreaKind
+import com.joegineered.ontheroad.offline.OfflineAreaState
+import java.text.DateFormat
+import java.util.Date
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,15 +56,20 @@ import kotlinx.coroutines.launch
 enum class SettingsPage {
   MAIN,
   CHARGERS,
+  OFFLINE_MAPS,
 }
 
 /**
  * Full-screen settings. [onNavigate] moves between pages; null closes settings. The system back
- * gesture goes up one level.
+ * gesture goes up one level. [onPickOfflineArea] closes settings to frame an area on the map.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(page: SettingsPage, onNavigate: (SettingsPage?) -> Unit) {
+fun SettingsScreen(
+    page: SettingsPage,
+    onNavigate: (SettingsPage?) -> Unit,
+    onPickOfflineArea: () -> Unit,
+) {
   val up = { onNavigate(if (page == SettingsPage.MAIN) null else SettingsPage.MAIN) }
   BackHandler(onBack = up)
 
@@ -64,6 +82,7 @@ fun SettingsScreen(page: SettingsPage, onNavigate: (SettingsPage?) -> Unit) {
                       when (page) {
                         SettingsPage.MAIN -> R.string.settings_menu
                         SettingsPage.CHARGERS -> R.string.ev_chargers
+                        SettingsPage.OFFLINE_MAPS -> R.string.offline_maps
                       }
                   )
               )
@@ -78,15 +97,20 @@ fun SettingsScreen(page: SettingsPage, onNavigate: (SettingsPage?) -> Unit) {
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
       when (page) {
-        SettingsPage.MAIN -> MainSettings(onOpenChargers = { onNavigate(SettingsPage.CHARGERS) })
+        SettingsPage.MAIN ->
+            MainSettings(
+                onOpenChargers = { onNavigate(SettingsPage.CHARGERS) },
+                onOpenOfflineMaps = { onNavigate(SettingsPage.OFFLINE_MAPS) },
+            )
         SettingsPage.CHARGERS -> ChargerSettings()
+        SettingsPage.OFFLINE_MAPS -> OfflineMapSettings(onPickOfflineArea)
       }
     }
   }
 }
 
 @Composable
-private fun MainSettings(onOpenChargers: () -> Unit) {
+private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Unit) {
   val viewModel = AppGraph.navigationViewModel
   val settings = AppGraph.settings
   val scope = rememberCoroutineScope()
@@ -97,6 +121,8 @@ private fun MainSettings(onOpenChargers: () -> Unit) {
   val showChargers by settings.showChargers.collectAsState(initial = true)
   val plugTypes by settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
   val simulated by viewModel.simulated.collectAsState()
+  val offlineAreas by AppGraph.offlineMaps.areas.collectAsState()
+  val context = LocalContext.current
 
   SectionHeader(stringResource(R.string.settings_section_map))
   Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -128,6 +154,18 @@ private fun MainSettings(onOpenChargers: () -> Unit) {
             else -> SocketType.entries.filter { it in plugTypes }.joinToString(", ") { it.label }
           },
       onClick = onOpenChargers,
+  )
+  NavigationRow(
+      title = stringResource(R.string.offline_maps),
+      summary =
+          if (offlineAreas.isEmpty()) stringResource(R.string.offline_maps_none)
+          else
+              stringResource(
+                  R.string.offline_maps_summary,
+                  offlineAreas.size,
+                  Formatter.formatShortFileSize(context, offlineAreas.sumOf { it.sizeBytes }),
+              ),
+      onClick = onOpenOfflineMaps,
   )
 
   HorizontalDivider(Modifier.padding(top = 8.dp))
@@ -209,6 +247,133 @@ private fun ChargerSettings() {
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       modifier = Modifier.padding(16.dp),
   )
+}
+
+@Composable
+private fun OfflineMapSettings(onPickArea: () -> Unit) {
+  val settings = AppGraph.settings
+  val offlineMaps = AppGraph.offlineMaps
+  val scope = rememberCoroutineScope()
+  val saveRoutes by settings.saveRouteMaps.collectAsState(initial = true)
+  val areas by offlineMaps.areas.collectAsState()
+  val network by AppGraph.network.status.collectAsState()
+  var confirmDelete by remember { mutableStateOf<OfflineArea<*>?>(null) }
+
+  SwitchRow(
+      title = stringResource(R.string.save_route_maps),
+      summary = stringResource(R.string.save_route_maps_summary),
+      checked = saveRoutes,
+  ) {
+    scope.launch { settings.setSaveRouteMaps(it) }
+  }
+
+  HorizontalDivider(Modifier.padding(top = 8.dp))
+  SectionHeader(stringResource(R.string.offline_saved_areas))
+  if (areas.isEmpty()) {
+    Text(
+        stringResource(R.string.offline_no_areas),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+  }
+  areas.forEach { area ->
+    OfflineAreaRow(
+        area = area,
+        online = network.online,
+        onUpdate = { offlineMaps.update(area) },
+        onRetry = { offlineMaps.retry(area) },
+        onDelete = { confirmDelete = area },
+    )
+  }
+  Button(onClick = onPickArea, enabled = network.online, modifier = Modifier.padding(16.dp)) {
+    Text(stringResource(R.string.offline_download_area))
+  }
+  Text(
+      stringResource(R.string.offline_maps_hint),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+  )
+
+  confirmDelete?.let { area ->
+    AlertDialog(
+        onDismissRequest = { confirmDelete = null },
+        title = { Text(stringResource(R.string.offline_delete_confirm, area.displayName())) },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                areas.firstOrNull { it.info.id == area.info.id }?.let(offlineMaps::delete)
+                confirmDelete = null
+              }
+          ) {
+            Text(stringResource(R.string.offline_delete))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+  }
+}
+
+@Composable
+private fun OfflineArea<*>.displayName(): String =
+    if (info.kind == OfflineAreaKind.ROUTE) stringResource(R.string.offline_route_name, info.name) else info.name
+
+@Composable
+private fun OfflineAreaRow(
+    area: OfflineArea<*>,
+    online: Boolean,
+    onUpdate: () -> Unit,
+    onRetry: () -> Unit,
+    onDelete: () -> Unit,
+) {
+  val context = LocalContext.current
+  val size = Formatter.formatShortFileSize(context, area.sizeBytes)
+  val state = area.state
+  val fraction =
+      when (state) {
+        is OfflineAreaState.Downloading -> state.fraction
+        is OfflineAreaState.Updating -> state.fraction
+        else -> null
+      }
+  val percent = fraction?.let { "${(it * 100).toInt()}%" } ?: size
+  val status =
+      when {
+        state is OfflineAreaState.Ready -> {
+          val saved =
+              stringResource(
+                  R.string.offline_status_ready,
+                  size,
+                  DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(area.info.createdAtMillis)),
+              )
+          if (area.outdated) "$saved · ${stringResource(R.string.offline_update_available)}" else saved
+        }
+        !online -> stringResource(R.string.offline_status_waiting)
+        state is OfflineAreaState.Updating -> stringResource(R.string.offline_status_updating, percent)
+        state is OfflineAreaState.Failed -> stringResource(R.string.offline_status_failed, state.message)
+        else -> stringResource(R.string.offline_status_downloading, percent)
+      }
+
+  Row(
+      Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(Modifier.weight(1f)) {
+      SettingText(area.displayName(), status)
+      if (state is OfflineAreaState.Downloading || state is OfflineAreaState.Updating) {
+        val progressModifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+        if (fraction != null) LinearProgressIndicator(progress = { fraction }, modifier = progressModifier)
+        else LinearProgressIndicator(progressModifier)
+      }
+    }
+    if (area.outdated && online) TextButton(onClick = onUpdate) { Text(stringResource(R.string.offline_update)) }
+    if (state is OfflineAreaState.Failed && online) TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+    IconButton(onClick = onDelete) {
+      Icon(painterResource(R.drawable.ic_delete), stringResource(R.string.offline_delete))
+    }
+  }
 }
 
 private fun SocketType.descriptionRes(): Int =

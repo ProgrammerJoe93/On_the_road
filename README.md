@@ -22,6 +22,13 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - slow traffic at measuring stations;
   - spoken warnings for events on your route;
   - routes avoid closed roads.
+- **Offline use:**
+  - download map areas picked on the map, with the EV chargers in them;
+  - the map along each route is saved when navigation starts (the last 3 routes);
+  - saved areas update on Wi-Fi when OpenFreeMap publishes new map data;
+  - speed cameras, chargers and recently viewed map areas come from the cache when offline;
+  - search falls back to recent destinations;
+  - routing still needs a connection.
 - **Android Auto:**
   - the MapLibre map on the car screen;
   - Ferrostar's `NavigationTemplate`;

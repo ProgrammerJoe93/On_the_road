@@ -71,6 +71,13 @@ class SettingsRepository(private val context: Context) {
     context.dataStore.edit { it[LIVE_TRAFFIC] = enabled }
   }
 
+  /** Whether the map along each route is downloaded when navigation starts, for use offline. */
+  val saveRouteMaps: Flow<Boolean> = context.dataStore.data.map { prefs -> prefs[SAVE_ROUTE_MAPS] ?: true }
+
+  suspend fun setSaveRouteMaps(enabled: Boolean) {
+    context.dataStore.edit { it[SAVE_ROUTE_MAPS] = enabled }
+  }
+
   suspend fun setCameraWarningsEnabled(enabled: Boolean) {
     context.dataStore.edit { it[CAMERA_WARNINGS] = enabled }
   }
@@ -89,6 +96,7 @@ class SettingsRepository(private val context: Context) {
     private val SHOW_CHARGERS = booleanPreferencesKey("show_chargers")
     private val LIVE_TRAFFIC = booleanPreferencesKey("live_traffic")
     private val CHARGER_PLUG_TYPES = stringSetPreferencesKey("charger_plug_types")
+    private val SAVE_ROUTE_MAPS = booleanPreferencesKey("save_route_maps")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This

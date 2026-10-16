@@ -10,6 +10,15 @@ object AppConfig {
 
   fun mapStyleUrl(night: Boolean) = if (night) NIGHT_MAP_STYLE_URL else MAP_STYLE_URL
 
+  /** Both styles, so offline areas work by day and by night. */
+  val MAP_STYLE_URLS = listOf(MAP_STYLE_URL, NIGHT_MAP_STYLE_URL)
+
+  /** The TileJSON of the vector tiles both styles use. */
+  const val MAP_TILES_URL = "https://tiles.openfreemap.org/planet"
+
+  /** OpenFreeMap's highest tile zoom; the map overzooms beyond it. */
+  const val MAP_MAX_TILE_ZOOM = 14
+
   val valhallaUrl: String = BuildConfig.VALHALLA_URL
 
   const val VALHALLA_COSTING = "auto"

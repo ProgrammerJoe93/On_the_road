@@ -43,6 +43,7 @@ import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.PlaceSearch
 import com.joegineered.ontheroad.search.SearchState
+import kotlinx.coroutines.flow.first
 
 /**
  * A search bar for addresses and places. While focused, it lists recent destinations (empty
@@ -63,6 +64,8 @@ fun SearchPanel(
         geocoder = AppGraph.geocoder,
         scope = scope,
         near = { viewModel.location.value?.coordinates?.let { it.lat to it.lng } },
+        isOnline = { AppGraph.network.isOnline },
+        savedPlaces = { AppGraph.recentDestinations.places.first() },
     )
   }
   val state by search.state.collectAsState()
@@ -113,7 +116,13 @@ fun SearchPanel(
           keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
           keyboardActions =
               KeyboardActions(
-                  onSearch = { (state as? SearchState.Results)?.places?.firstOrNull()?.let(::choose) }
+                  onSearch = {
+                    when (val current = state) {
+                      is SearchState.Results -> current.places.firstOrNull()?.let(::choose)
+                      is SearchState.Offline -> current.places.firstOrNull()?.let(::choose)
+                      else -> Unit
+                    }
+                  }
               ),
           colors =
               TextFieldDefaults.colors(
@@ -158,6 +167,14 @@ fun SearchPanel(
           val places = (state as SearchState.Results).places
           if (places.isEmpty()) Message(stringResource(R.string.no_results))
           else PlaceList(places, R.drawable.ic_place, ::choose, maxListHeight)
+        }
+        state is SearchState.Offline -> {
+          val places = (state as SearchState.Offline).places
+          if (places.isEmpty()) Message(stringResource(R.string.search_offline_no_matches))
+          else {
+            SectionLabel(stringResource(R.string.search_offline))
+            PlaceList(places, R.drawable.ic_history, ::choose, maxListHeight, showDivider = false)
+          }
         }
         state is SearchState.Failed ->
             Message(

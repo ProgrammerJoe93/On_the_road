@@ -45,6 +45,7 @@ import com.joegineered.ontheroad.ui.arrivalSummary
 import com.joegineered.ontheroad.traffic.TrafficWarning
 import com.joegineered.ontheroad.traffic.labelRes
 import com.joegineered.ontheroad.ui.ChargerLayer
+import com.joegineered.ontheroad.ui.OfflineIndicator
 import com.joegineered.ontheroad.ui.TrafficLayer
 import com.joegineered.ontheroad.ui.RoadSigns
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
@@ -223,6 +224,8 @@ class CarNavigationScreen(
         if (showChargers) ChargerLayer(chargers.filter { it.matches(plugTypes) })
         SpeedCameraLayer(cameras)
       }
+
+      OfflineIndicator(Modifier.align(Alignment.TopEnd).padding(normalPadding).padding(8.dp))
 
       // Road signs top left and current speed bottom left, inside the area the car's navigation
       // UI leaves visible.

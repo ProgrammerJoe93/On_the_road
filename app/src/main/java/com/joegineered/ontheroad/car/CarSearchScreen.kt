@@ -17,6 +17,7 @@ import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.PlaceSearch
 import com.joegineered.ontheroad.search.SearchState
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
@@ -33,6 +34,8 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
           geocoder = AppGraph.geocoder,
           scope = lifecycleScope,
           near = { viewModel.location.value?.coordinates?.let { it.lat to it.lng } },
+          isOnline = { AppGraph.network.isOnline },
+          savedPlaces = { AppGraph.recentDestinations.places.first() },
       )
 
   private var query = ""
@@ -87,6 +90,16 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
           builder
               .setItemList(placeList((state as SearchState.Results).places, R.drawable.ic_place))
               .build()
+      state is SearchState.Offline ->
+          builder
+              .setItemList(
+                  placeList(
+                      (state as SearchState.Offline).places,
+                      R.drawable.ic_history,
+                      noItemsMessage = R.string.search_offline_no_matches,
+                  )
+              )
+              .build()
       state is SearchState.Failed ->
           builder
               .setItemList(
@@ -105,10 +118,10 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
     }
   }
 
-  private fun placeList(places: List<Place>, iconRes: Int): ItemList {
+  private fun placeList(places: List<Place>, iconRes: Int, noItemsMessage: Int = R.string.no_results): ItemList {
     val icon = CarIcon.Builder(IconCompat.createWithResource(carContext, iconRes)).build()
     return ItemList.Builder()
-        .setNoItemsMessage(carContext.getString(R.string.no_results))
+        .setNoItemsMessage(carContext.getString(noItemsMessage))
         .apply {
           places.take(maxItems).forEach { place ->
             addItem(
