@@ -36,6 +36,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
@@ -53,6 +54,7 @@ fun SearchPanel(
     modifier: Modifier = Modifier,
     onActiveChanged: (Boolean) -> Unit = {},
     onChargersNearby: (() -> Unit)? = null,
+    maxListHeight: Dp = 320.dp,
 ) {
   val scope = rememberCoroutineScope()
   val viewModel = AppGraph.navigationViewModel
@@ -149,13 +151,13 @@ fun SearchPanel(
       when {
         showingRecents && recents.isNotEmpty() -> {
           SectionLabel(stringResource(R.string.recent_destinations))
-          PlaceList(recents, R.drawable.ic_history, ::choose, showDivider = false)
+          PlaceList(recents, R.drawable.ic_history, ::choose, maxListHeight, showDivider = false)
         }
         showingRecents -> Unit
         state is SearchState.Results -> {
           val places = (state as SearchState.Results).places
           if (places.isEmpty()) Message(stringResource(R.string.no_results))
-          else PlaceList(places, R.drawable.ic_place, ::choose)
+          else PlaceList(places, R.drawable.ic_place, ::choose, maxListHeight)
         }
         state is SearchState.Failed ->
             Message(
@@ -172,10 +174,11 @@ private fun PlaceList(
     places: List<Place>,
     iconRes: Int,
     onClick: (Place) -> Unit,
+    maxHeight: Dp,
     showDivider: Boolean = true,
 ) {
   if (showDivider) HorizontalDivider()
-  LazyColumn(Modifier.heightIn(max = 320.dp)) {
+  LazyColumn(Modifier.heightIn(max = maxHeight)) {
     items(places, key = { "${it.lat},${it.lng},${it.title}" }) { place ->
       Row(
           modifier =

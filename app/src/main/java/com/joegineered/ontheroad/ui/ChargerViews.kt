@@ -173,7 +173,7 @@ fun NearbyChargersCard(
         list == null -> Text(stringResource(R.string.loading), Modifier.padding(16.dp))
         list.isEmpty() -> Text(stringResource(R.string.no_chargers_found), Modifier.padding(16.dp))
         else ->
-            LazyColumn(Modifier.heightIn(max = 340.dp)) {
+            LazyColumn(Modifier.heightIn(max = if (isLandscape()) 180.dp else 340.dp)) {
               items(list, key = { it.first.id }) { (station, distance) ->
                 Row(
                     Modifier.fillMaxWidth()

@@ -43,6 +43,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.offset
 import com.stadiamaps.ferrostar.composeui.config.withInstructionsView
 import com.stadiamaps.ferrostar.composeui.views.components.InstructionsView
@@ -115,8 +120,8 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   val navigationMapState = rememberNavigationMapState()
   ChargerViewportEffect(navigationMapState, enabled = showChargers)
   var settingsPage by remember { mutableStateOf<SettingsPage?>(null) }
-  // Bottom edge of the turn banner (root coordinates), to place the road signs right below it.
-  val bannerBottom = remember { mutableStateOf<Float?>(null) }
+  // Bottom-left corner of the turn banner (root coordinates), to place the road signs below it.
+  val bannerAnchor = remember { mutableStateOf<Offset?>(null) }
   val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
 
   Box(Modifier.fillMaxSize()) {
@@ -133,7 +138,10 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                   state.visualInstruction?.let { instructions ->
                     InstructionsView(
                         modifier =
-                            modifier.onGloballyPositioned { bannerBottom.value = it.boundsInRoot().bottom },
+                            modifier.onGloballyPositioned {
+                              val bounds = it.boundsInRoot()
+                              bannerAnchor.value = Offset(bounds.left, bounds.bottom)
+                            },
                         instructions = instructions,
                         theme = DefaultNavigationUITheme.instructionRowTheme,
                         remainingSteps = state.remainingSteps,
@@ -154,7 +162,8 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                                   AppConfig.usesMetricUnits,
                               ),
                           metric = AppConfig.usesMetricUnits,
-                          modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+                          // Aligned with the left edge of the banner, signs and progress bar.
+                        modifier = Modifier.padding(bottom = 8.dp),
                       )
                       TripProgressView(
                           theme = DefaultNavigationUITheme.tripProgressViewTheme,
@@ -166,7 +175,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                 }
                 .withCustomOverlayView { modifier ->
                   if (uiState.isNavigating()) {
-                    NavigatingOverlay(modifier, bannerBottom.value)
+                    NavigatingOverlay(modifier, bannerAnchor.value)
                   } else {
                     BrowsingOverlay(
                         modifier,
@@ -195,7 +204,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
 }
 
 @Composable
-private fun NavigatingOverlay(modifier: Modifier, bannerBottom: Float?) {
+private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
   val warning by AppGraph.speedCameras.activeWarning.collectAsState()
   val selectedCharger by AppGraph.chargers.selected.collectAsState()
   val location by AppGraph.navigationViewModel.location.collectAsState()
@@ -203,48 +212,66 @@ private fun NavigatingOverlay(modifier: Modifier, bannerBottom: Float?) {
   val selectedTraffic by AppGraph.traffic.selected.collectAsState()
   val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
   val uiState by AppGraph.navigationViewModel.navigationUiState.collectAsState()
-  var overlayTop by remember { mutableStateOf(0f) }
-  val density = LocalDensity.current
-  Box(modifier.fillMaxSize().onGloballyPositioned { overlayTop = it.boundsInRoot().top }) {
-    // Where Ferrostar would put its speed limit sign: under the banner, 16 dp in.
-    bannerBottom?.let { bottom ->
+  var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
+  val landscape = isLandscape()
+  Box(modifier.fillMaxSize().onGloballyPositioned { overlayOrigin = it.boundsInRoot().topLeft }) {
+    // Where Ferrostar would put its speed limit sign: under the banner, aligned with its edge.
+    bannerAnchor?.let { anchor ->
       RoadSigns(
           speedLimit = uiState.currentAnnotation?.speedLimit,
           roadworks = roadworks != null,
           modifier =
               Modifier.offset {
-                val gap = with(density) { 16.dp.roundToPx() }
-                IntOffset(gap, (bottom - overlayTop).toInt() + gap)
+                val gap = 16.dp.roundToPx()
+                IntOffset(
+                    (anchor.x - overlayOrigin.x).toInt(),
+                    (anchor.y - overlayOrigin.y).toInt() + gap,
+                )
               },
       )
     }
+
+    // Portrait: left edge, mid-height, between the banner and the trip progress bar.
+    // Landscape: Ferrostar's banner, signs and progress fill the left half, so use the right half.
+    val badgeModifier =
+        if (landscape) Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 16.dp).offsetToRightHalf()
+        else Modifier.align(Alignment.CenterStart).padding(start = 16.dp)
+    Column(badgeModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      warning?.let { CameraWarningBadge(it) }
+      trafficWarning?.let { TrafficWarningBadge(it) }
+    }
+
+    // Cards: above the trip progress bar in portrait; bottom of the right half in landscape,
+    // clear of the map buttons on the right edge.
+    val cardModifier =
+        if (landscape) {
+          Modifier.align(Alignment.BottomEnd).fillMaxWidth(0.5f).padding(start = 16.dp, end = 96.dp, bottom = 16.dp)
+        } else {
+          Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp)
+        }
     selectedCharger?.let { station ->
       ChargerCard(
           station = station,
           distanceMetres = location?.coordinates?.let { LatLng(it.lat, it.lng).distanceTo(station) },
           onNavigate = { navigateToCharger(station) },
           onClose = { AppGraph.chargers.clearSelection() },
-          // Above the trip progress bar.
-          modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp),
+          modifier = cardModifier,
       )
-    }
-    // Left edge, mid-height: clear of the instruction banner (top) and trip progress (bottom).
-    Column(
-        Modifier.align(Alignment.CenterStart).padding(start = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      warning?.let { CameraWarningBadge(it) }
-      trafficWarning?.let { TrafficWarningBadge(it) }
     }
     selectedTraffic?.let { item ->
-      TrafficCard(
-          item,
-          onClose = { AppGraph.traffic.select(null) },
-          modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp),
-      )
+      TrafficCard(item, onClose = { AppGraph.traffic.select(null) }, modifier = cardModifier)
     }
   }
 }
+
+/** Shifts content to start at the middle of the screen (plus a gap), for landscape layouts. */
+private fun Modifier.offsetToRightHalf(): Modifier =
+    this.layout { measurable, constraints ->
+      val placeable = measurable.measure(constraints.copy(minWidth = 0))
+      layout(placeable.width, placeable.height) {
+        placeable.place(constraints.maxWidth / 2 + 16.dp.roundToPx(), 0)
+      }
+    }
 
 @Composable
 private fun BrowsingOverlay(
@@ -264,14 +291,18 @@ private fun BrowsingOverlay(
   val selectedCharger by AppGraph.chargers.selected.collectAsState()
   val selectedTraffic by AppGraph.traffic.selected.collectAsState()
   val here = location?.coordinates?.let { LatLng(it.lat, it.lng) }
+  // Landscape: search and cards share a side panel on the left, leaving the map visible.
+  val landscape = isLandscape()
+  val panelWidth = if (landscape) Modifier.width(LandscapePanelWidth) else Modifier.fillMaxWidth()
 
   Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
     SearchPanel(
         onPlaceSelected = { place ->
           viewModel.selectDestination(Destination.from(place))
-          scope.launch { navigationMapState.showDestination(place.lat, place.lng) }
+          scope.launch { navigationMapState.showDestination(place.lat, place.lng, landscape) }
         },
-        modifier = Modifier.align(Alignment.TopCenter).padding(16.dp),
+        modifier = Modifier.align(Alignment.TopStart).padding(16.dp).then(panelWidth),
+        maxListHeight = if (landscape) 200.dp else 320.dp,
         onActiveChanged = { searching = it },
         onChargersNearby = { showNearbyChargers = true },
     )
@@ -298,8 +329,13 @@ private fun BrowsingOverlay(
       }
     }
 
+    // Kept below the search bar and scrollable, so stacked cards never run off a short screen.
     Column(
-        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp),
+        modifier =
+            Modifier.align(Alignment.BottomStart)
+                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 96.dp)
+                .then(panelWidth)
+                .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       arrival?.let { ArrivalCard(it, onDone = { viewModel.dismissArrival() }) }
@@ -311,7 +347,7 @@ private fun BrowsingOverlay(
               AppGraph.chargers.select(station)
               showNearbyChargers = false
               scope.launch {
-                navigationMapState.showDestination(station.position.lat, station.position.lng)
+                navigationMapState.showDestination(station.position.lat, station.position.lng, landscape)
               }
             },
             onClose = { showNearbyChargers = false },
@@ -411,14 +447,17 @@ private fun ChargerViewportEffect(mapState: NavigationMapState, enabled: Boolean
 }
 
 /** Moves the map to a chosen destination, leaving room for the destination card below it. */
-private suspend fun NavigationMapState.showDestination(lat: Double, lng: Double) {
+private suspend fun NavigationMapState.showDestination(lat: Double, lng: Double, landscape: Boolean) {
   cameraMode = NavigationCameraMode.FREE
   cameraState.animateTo(
       finalPosition =
           CameraPosition(
               target = Position(longitude = lng, latitude = lat),
               zoom = 15.5,
-              padding = PaddingValues(bottom = 240.dp),
+              // Keep the place clear of the cards: below them in portrait, beside them in landscape.
+              padding =
+                  if (landscape) PaddingValues(start = LandscapePanelWidth + 32.dp)
+                  else PaddingValues(bottom = 240.dp),
           ),
       duration = 1200.milliseconds,
   )
