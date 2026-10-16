@@ -1,6 +1,7 @@
 package com.joegineered.ontheroad.nav
 
 import android.util.Log
+import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.RecentDestinations
 import java.util.Locale
@@ -89,6 +90,11 @@ class OtrNavigationViewModel(
   /** Set when a trip ends at its destination; cleared with [dismissArrival]. */
   val arrival: StateFlow<Arrival?> = _arrival.asStateFlow()
 
+  private val speedEstimator = SpeedEstimator()
+  private val _speed = MutableStateFlow<Double?>(null)
+  /** Current speed in m/s while navigating; null when unknown or not navigating. */
+  val speedMetresPerSecond: StateFlow<Double?> = _speed.asStateFlow()
+
   /** The destination of the trip in progress. */
   private var activeDestination: Destination? = null
   private val parkedNearby = ParkedNearbyDetector()
@@ -114,13 +120,26 @@ class OtrNavigationViewModel(
   }
 
   private fun watchForArrival(state: NavigationState) {
-    when (val trip = state.tripState) {
+    val trip = state.tripState
+    if (trip !is TripState.Navigating) {
+      speedEstimator.reset()
+      _speed.value = null
+    }
+    when (trip) {
       is TripState.Complete -> finishTrip(trip.summary)
       is TripState.Navigating -> {
+        val location = trip.userLocation
+        val speed =
+            speedEstimator.update(
+                LatLng(location.coordinates.lat, location.coordinates.lng),
+                location.timestamp.toEpochMilli(),
+                location.speed?.value,
+            )
+        _speed.value = speed
         val parked =
             parkedNearby.update(
                 trip.progress.distanceRemaining,
-                trip.userLocation.speed?.value,
+                speed,
                 System.currentTimeMillis(),
             )
         if (parked) finishTrip(trip.summary)

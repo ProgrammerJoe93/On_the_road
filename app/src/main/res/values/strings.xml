@@ -25,6 +25,8 @@
     <string name="duration_minutes">%1$d min</string>
     <string name="duration_hours_minutes">%1$d h %2$d min</string>
     <string name="done">Done</string>
+    <string name="unit_kmh">km/h</string>
+    <string name="unit_mph">mph</string>
     <string name="search_hint">Search address or place</string>
     <string name="clear_search">Clear search</string>
     <string name="recent_destinations">Recent</string>

@@ -54,6 +54,9 @@ import com.joegineered.ontheroad.settings.ThemeMode
 import com.stadiamaps.ferrostar.composeui.config.NavigationViewComponentBuilder
 import com.stadiamaps.ferrostar.composeui.config.VisualNavigationViewConfig
 import com.stadiamaps.ferrostar.composeui.config.withCustomOverlayView
+import com.stadiamaps.ferrostar.composeui.config.withProgressView
+import com.stadiamaps.ferrostar.composeui.theme.DefaultNavigationUITheme
+import com.stadiamaps.ferrostar.composeui.views.components.TripProgressView
 import com.stadiamaps.ferrostar.composeui.config.withSpeedLimitStyle
 import com.stadiamaps.ferrostar.composeui.runtime.KeepScreenOnDisposableEffect
 import com.stadiamaps.ferrostar.composeui.views.components.controls.NavigationUIButton
@@ -98,6 +101,29 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
       config = VisualNavigationViewConfig.Default().withSpeedLimitStyle(signageStyle()),
       views =
           NavigationViewComponentBuilder.Default()
+              // Current speed sits just above the trip progress bar, bottom left.
+              .withProgressView { modifier, state, onTapExit ->
+                state.progress?.let { progress ->
+                  val speed by viewModel.speedMetresPerSecond.collectAsState()
+                  Column(modifier) {
+                    Speedometer(
+                        reading =
+                            speedReading(
+                                speed,
+                                state.currentAnnotation?.speedLimit,
+                                AppConfig.usesMetricUnits,
+                            ),
+                        metric = AppConfig.usesMetricUnits,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
+                    )
+                    TripProgressView(
+                        theme = DefaultNavigationUITheme.tripProgressViewTheme,
+                        progress = progress,
+                        onTapExit = onTapExit,
+                    )
+                  }
+                }
+              }
               .withCustomOverlayView { modifier ->
                 if (uiState.isNavigating()) {
                   NavigatingOverlay(modifier)
