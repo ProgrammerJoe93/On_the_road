@@ -29,6 +29,7 @@ class OtrCarSession : Session() {
     AppGraph.init(carContext)
     AppGraph.refreshLocationPermission()
     AppGraph.speedCameras.start()
+    AppGraph.roadsideStops.start()
     AppGraph.startTraffic()
     AppGraph.offlineMaps.start()
     // Handles geo: and google.navigation: intents, e.g. from the Android Auto assistant.

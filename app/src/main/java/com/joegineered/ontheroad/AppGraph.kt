@@ -32,6 +32,7 @@ import com.joegineered.ontheroad.search.RecentDestinations
 import com.joegineered.ontheroad.search.SavedPlaces
 import com.joegineered.ontheroad.search.quickPlaces
 import com.joegineered.ontheroad.settings.SettingsRepository
+import com.joegineered.ontheroad.stops.RoadsideStopController
 import com.joegineered.ontheroad.voice.NavigationVoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -294,6 +295,16 @@ object AppGraph {
         alertEngine = CameraAlertEngine(),
         announcer = CameraWarningAnnouncer(appContext, voice),
         settings = settings,
+    )
+  }
+
+  /** Fuel, chargers, food and rest areas ahead on the route. */
+  val roadsideStops: RoadsideStopController by lazy {
+    RoadsideStopController(
+        navigationState = ferrostarCore.state,
+        query = overpass::query,
+        plugTypes = { settings.chargerPlugTypes.first() },
+        isOnline = { network.isOnline },
     )
   }
 

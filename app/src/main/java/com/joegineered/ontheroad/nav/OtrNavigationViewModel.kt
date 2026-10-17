@@ -142,6 +142,9 @@ class OtrNavigationViewModel(
 
   /** The destination of the trip in progress. */
   private var activeDestination: Destination? = null
+  /** A stop on the way being driven to, and the destination to continue to after it. */
+  private var stopover: Destination? = null
+  private var continueTo: Destination? = null
   private val parkedNearby = ParkedNearbyDetector()
   private var finishing = false
 
@@ -211,7 +214,10 @@ class OtrNavigationViewModel(
             destination = activeDestination,
             distanceMetres = summary.distanceTraveled,
             durationSeconds = ((endedAt - summary.startedAt.time) / 1000).coerceAtLeast(0),
+            continueTo = continueTo.takeIf { activeDestination != null && activeDestination == stopover },
         )
+    stopover = null
+    continueTo = null
     viewModelScope.launch {
       // Stopping navigation clears the speech queue; let "You have arrived" finish first.
       var waited = 0L
@@ -226,6 +232,27 @@ class OtrNavigationViewModel(
 
   fun dismissArrival() {
     _arrival.value = null
+  }
+
+  /**
+   * Drives to [stop] (fuel, a charger, food) during a trip, then offers to continue to the trip's
+   * destination on arrival. Without a trip, simply navigates to [stop].
+   */
+  fun stopOnTheWay(stop: Destination) {
+    val active = activeDestination
+    if (active != null && navigationUiState.value.isNavigating()) {
+      // Already on the way to a stop: the new one replaces it, still before the destination.
+      continueTo = if (active == stopover) continueTo else active
+      stopover = stop
+    }
+    startNavigation(stop)
+  }
+
+  /** After a stop on the way, navigates on to the trip's destination. */
+  fun continueTrip() {
+    val next = _arrival.value?.continueTo ?: return
+    _arrival.value = null
+    startNavigation(next)
   }
 
   fun setLocationPermission(permitted: Boolean) {
@@ -347,6 +374,11 @@ class OtrNavigationViewModel(
     if (_simulated.value) locationProvider.enableSimulationOn(route)
 
     val newTrip = destination != activeDestination
+    val isStop = destination == stopover
+    if (newTrip && !isStop) {
+      stopover = null
+      continueTo = null
+    }
     setDestination(destination.label)
     activeDestination = destination
     parkedNearby.reset()
@@ -362,9 +394,12 @@ class OtrNavigationViewModel(
     _routingStatus.value = RoutingStatus.Idle
     val place = destination.toPlace()
     if (newTrip) _tripStarts.tryEmit(TripStart(place.title, route.geometry))
-    // Remembering the destination is best-effort; it must not fail an active session.
-    runCatching { recentDestinations.add(place) }
-        .onFailure { Log.w(TAG, "Could not save recent destination", it) }
+    // Stops on the way would crowd out real destinations. Remembering the destination is
+    // best-effort; it must not fail an active session.
+    if (!isStop) {
+      runCatching { recentDestinations.add(place) }
+          .onFailure { Log.w(TAG, "Could not save recent destination", it) }
+    }
   }
 
   private fun routingFailure(e: Exception): RoutingStatus {
@@ -385,6 +420,8 @@ class OtrNavigationViewModel(
   }
 
   override fun stopNavigation() {
+    stopover = null
+    continueTo = null
     endSession()
   }
 

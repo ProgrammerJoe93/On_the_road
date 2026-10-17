@@ -11,6 +11,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,7 +27,12 @@ import com.joegineered.ontheroad.nav.Arrival
 import java.util.Locale
 
 @Composable
-fun ArrivalCard(arrival: Arrival, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun ArrivalCard(
+    arrival: Arrival,
+    onDone: () -> Unit,
+    onContinue: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
   val context = LocalContext.current
   Card(modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -57,8 +63,19 @@ fun ArrivalCard(arrival: Arrival, onDone: () -> Unit, modifier: Modifier = Modif
           style = MaterialTheme.typography.bodyMedium,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
-      Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.done))
+      // After a stop on the way, carrying on is the likely next step.
+      arrival.continueTo?.let { next ->
+        Button(onClick = onContinue, modifier = Modifier.fillMaxWidth()) {
+          Text(
+              next.label?.let { stringResource(R.string.continue_to, it) }
+                  ?: stringResource(R.string.continue_trip)
+          )
+        }
+      }
+      if (arrival.continueTo == null) {
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.done)) }
+      } else {
+        OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.done)) }
       }
     }
   }

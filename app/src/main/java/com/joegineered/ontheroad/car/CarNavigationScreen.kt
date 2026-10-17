@@ -58,6 +58,7 @@ import com.joegineered.ontheroad.ui.OfflineIndicator
 import com.joegineered.ontheroad.ui.TrafficLayer
 import com.joegineered.ontheroad.ui.RoadSigns
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
+import com.joegineered.ontheroad.ui.StopsLayer
 import com.joegineered.ontheroad.ui.Speedometer
 import com.joegineered.ontheroad.ui.speedReading
 import com.joegineered.ontheroad.ui.formatDistance
@@ -210,6 +211,7 @@ class CarNavigationScreen(
     val trafficEvents by AppGraph.traffic.events.collectAsState()
     val slowTraffic by AppGraph.traffic.slowTraffic.collectAsState()
     val preview by viewModel.preview.collectAsState()
+    val stops by AppGraph.roadsideStops.state.collectAsState()
 
     browsingPadding = normalPadding
     navigationMapState = mapState
@@ -249,7 +251,7 @@ class CarNavigationScreen(
         if (liveTraffic) TrafficLayer(trafficEvents, slowTraffic)
         if (showChargers) ChargerLayer(chargers.filter { it.matches(plugTypes) })
         SpeedCameraLayer(cameras)
-        if (uiState?.isNavigating() != true) RoutePreviewLayer(preview)
+        if (uiState?.isNavigating() == true) StopsLayer(stops) else RoutePreviewLayer(preview)
       }
 
       OfflineIndicator(Modifier.align(Alignment.TopEnd).padding(normalPadding).padding(8.dp))
@@ -286,7 +288,7 @@ class CarNavigationScreen(
     val destination = viewModel.selectedDestination.value
     cancelPreview.isEnabled = state?.isNavigating() != true && destination != null
     if (state != null && state.isNavigating()) {
-      return NavigationTemplateBuilder(carContext)
+      val template = NavigationTemplateBuilder(carContext)
           .setBackupDrivingSide(DrivingSide.RIGHT)
           .setOnStopNavigation { viewModel.stopNavigation() }
           .setOnMute(state.isMuted) { viewModel.toggleMute() }
@@ -297,6 +299,7 @@ class CarNavigationScreen(
           .setOnCycleCamera(navigationMapState?.isTrackingUser == true) { cycleCamera() }
           .setTripState(state.tripState)
           .build()
+      return withStopsAction(template)
     }
 
     viewModel.arrival.value?.let { return arrivalTemplate(it) }
@@ -410,6 +413,29 @@ class CarNavigationScreen(
         .build()
   }
 
+  /**
+   * Ferrostar's navigation template with a "Stops on the way" action added to its action strip;
+   * its builder has no way to add one.
+   */
+  private fun withStopsAction(template: Template): Template {
+    val navigation = template as? NavigationTemplate ?: return template
+    val actions = navigation.actionStrip?.actions.orEmpty()
+    if (actions.size >= MAX_STRIP_ACTIONS) return template
+    val stops =
+        Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_fuel)).build())
+            .setOnClickListener { screenManager.push(CarStopsScreen(carContext)) }
+            .build()
+    return NavigationTemplate.Builder()
+        .apply {
+          navigation.navigationInfo?.let { setNavigationInfo(it) }
+          navigation.destinationTravelEstimate?.let { setDestinationTravelEstimate(it) }
+          navigation.mapActionStrip?.let { setMapActionStrip(it) }
+          setActionStrip(ActionStrip.Builder().apply { (listOf(stops) + actions).forEach(::addAction) }.build())
+        }
+        .build()
+  }
+
   /** "You have arrived" with the destination and trip summary, until the driver taps Done. */
   private fun arrivalTemplate(arrival: Arrival): Template {
     val flag =
@@ -424,6 +450,18 @@ class CarNavigationScreen(
             .setTitle(carContext.getString(R.string.done))
             .setOnClickListener { viewModel.dismissArrival() }
             .build()
+    // After a stop on the way: carry on to the trip's destination.
+    val carryOn =
+        arrival.continueTo?.let { next ->
+          Action.Builder()
+              .setTitle(
+                  next.label?.let { carContext.getString(R.string.continue_to, it) }
+                      ?: carContext.getString(R.string.continue_trip)
+              )
+              .setFlags(Action.FLAG_PRIMARY)
+              .setOnClickListener { viewModel.continueTrip() }
+              .build()
+        }
     return NavigationTemplate.Builder()
         .setNavigationInfo(
             MessageInfo.Builder(carContext.getString(R.string.arrived_title))
@@ -431,7 +469,7 @@ class CarNavigationScreen(
                 .setImage(flag)
                 .build()
         )
-        .setActionStrip(ActionStrip.Builder().addAction(done).build())
+        .setActionStrip(ActionStrip.Builder().apply { carryOn?.let(::addAction) }.addAction(done).build())
         .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
         .build()
   }
@@ -491,5 +529,7 @@ class CarNavigationScreen(
 
   private companion object {
     const val CAMERA_ALERT_DURATION_MS = 8_000L
+    /** The most actions a navigation template's action strip holds. */
+    const val MAX_STRIP_ACTIONS = 4
   }
 }

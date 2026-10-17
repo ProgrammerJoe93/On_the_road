@@ -111,6 +111,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   LocationPermissionEffect(viewModel)
   LaunchedEffect(Unit) {
     AppGraph.speedCameras.start()
+    AppGraph.roadsideStops.start()
     AppGraph.startTraffic()
     AppGraph.offlineMaps.start()
   }
@@ -119,6 +120,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   val destination by viewModel.selectedDestination.collectAsState()
   val arrival by viewModel.arrival.collectAsState()
   val cameras by AppGraph.speedCameras.cameras.collectAsState()
+  val stops by AppGraph.roadsideStops.state.collectAsState()
   val night by AppGraph.nightMode.isNight.collectAsState()
   val showChargers by AppGraph.settings.showChargers.collectAsState(initial = true)
   val chargers by AppGraph.chargers.visible.collectAsState()
@@ -284,6 +286,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
         ChargerLayer(chargers.filter { it.matches(plugTypes) }, onClick = AppGraph.chargers::select)
       }
       SpeedCameraLayer(cameras)
+      if (uiState.isNavigating()) StopsLayer(stops)
       if (!uiState.isNavigating()) RoutePreviewLayer(preview, onSelect = viewModel::selectRoute)
       DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
       if (pickingOfflineArea && !uiState.isNavigating()) {
@@ -319,6 +322,9 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
   val selectedTraffic by AppGraph.traffic.selected.collectAsState()
   val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
   val uiState by AppGraph.navigationViewModel.navigationUiState.collectAsState()
+  val stopSearch by AppGraph.roadsideStops.state.collectAsState()
+  var showStops by remember { mutableStateOf(false) }
+  val context = LocalContext.current
   var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
   val landscape = isLandscape()
   Box(modifier.fillMaxSize().onGloballyPositioned { overlayOrigin = it.boundsInRoot().topLeft }) {
@@ -357,6 +363,17 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
         } else {
           Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 120.dp)
         }
+    // Right edge, under Ferrostar's overview and mute buttons (which start just below the banner)
+    // and above its zoom buttons.
+    if (!showStops) {
+      val top = bannerAnchor?.let { with(LocalDensity.current) { (it.y - overlayOrigin.y).toDp() } } ?: 0.dp
+      Box(Modifier.align(Alignment.TopEnd).padding(top = top + StopsButtonGap)) {
+        NavigationUIButton(onClick = { showStops = true }, buttonSize = DpSize(56.dp, 56.dp)) {
+          Icon(painterResource(R.drawable.ic_fuel), stringResource(R.string.stops_on_the_way))
+        }
+      }
+    }
+
     selectedCharger?.let { station ->
       ChargerCard(
           station = station,
@@ -366,11 +383,31 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
           modifier = cardModifier,
       )
     }
+    if (showStops && selectedCharger == null) {
+      StopsAlongRouteCard(
+          search = stopSearch,
+          onSearch = AppGraph.roadsideStops::search,
+          onSelect = { stop ->
+            showStops = false
+            AppGraph.roadsideStops.clear()
+            AppGraph.navigationViewModel.stopOnTheWay(stop.toDestination(context))
+          },
+          onClose = {
+            showStops = false
+            AppGraph.roadsideStops.clear()
+          },
+          modifier = cardModifier,
+          maxListHeight = if (landscape) 140.dp else 240.dp,
+      )
+    }
     selectedTraffic?.let { item ->
       TrafficCard(item, onClose = { AppGraph.traffic.select(null) }, modifier = cardModifier)
     }
   }
 }
+
+/** From the banner's bottom to the stops button: past Ferrostar's two buttons (56 dp + gap). */
+private val StopsButtonGap = 160.dp
 
 /** Shifts content to start at the middle of the screen (plus a gap), for landscape layouts. */
 private fun Modifier.offsetToRightHalf(): Modifier =
@@ -456,7 +493,9 @@ private fun BrowsingOverlay(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       OfflineIndicator()
-      arrival?.let { ArrivalCard(it, onDone = { viewModel.dismissArrival() }) }
+      arrival?.let {
+        ArrivalCard(it, onDone = { viewModel.dismissArrival() }, onContinue = { viewModel.continueTrip() })
+      }
 
       if (showNearbyChargers && selectedCharger == null) {
         NearbyChargersCard(
@@ -504,10 +543,10 @@ private fun BrowsingOverlay(
   }
 }
 
-/** Starts navigating to a charger, replacing the current route if there is one. */
+/** Starts navigating to a charger; during a trip, as a stop on the way to its destination. */
 private fun navigateToCharger(station: ChargingStation) {
   AppGraph.chargers.clearSelection()
-  AppGraph.navigationViewModel.startNavigation(
+  AppGraph.navigationViewModel.stopOnTheWay(
       Destination(
           GeographicCoordinate(station.position.lat, station.position.lng),
           label = station.title,

@@ -11,6 +11,9 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   and (in Finland) traffic events on them; avoid tolls, motorways or ferries.
 - **Saved places:** home, work and named favourites, listed first in search on the phone and in
   the car.
+- **Stops on the way:** while navigating, find fuel, EV chargers, food or rest areas ahead on the
+  route (from OpenStreetMap), sorted by distance ahead; after the stop, carry on to the destination
+  with one tap. Picking a charger during a trip works the same way.
 - **Turn-by-turn navigation:**
   - lane guidance and a speed-limit sign;
   - spoken instructions, with a choice of speech rate, or warnings only;
@@ -125,6 +128,7 @@ app/src/main/java/com/joegineered/ontheroad/
   chargers/            EV chargers from OpenStreetMap, fetched per map tile
   traffic/             live traffic for Finland from Digitraffic
   search/              Photon address search, saved places and recent destinations
+  stops/               Fuel, chargers, food and rest areas along the route
   offline/             offline map areas and route corridors (MapLibre offline packs)
   net/                 connectivity monitoring
   night/               day/night switching from the sun's position

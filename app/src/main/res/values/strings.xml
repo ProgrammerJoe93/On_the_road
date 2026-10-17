@@ -161,4 +161,21 @@
     <string name="offline_area_name">Name</string>
     <string name="offline_area_default_name">Map area</string>
     <string name="download">Download</string>
+    <string name="stops_on_the_way">Stops on the way</string>
+    <string name="stop_fuel">Fuel</string>
+    <string name="stop_charging">Chargers</string>
+    <string name="stop_food">Food</string>
+    <string name="stop_rest">Rest areas</string>
+    <string name="stop_fuel_default">Fuel station</string>
+    <string name="stop_food_default">Café or restaurant</string>
+    <string name="stop_rest_default">Rest area</string>
+    <string name="stop_ahead">%1$s ahead</string>
+    <string name="stop_off_route">%1$s off route</string>
+    <string name="stops_pick_category">Find fuel, chargers, food or rest areas ahead on your route.</string>
+    <string name="stops_searching">Searching along the route…</string>
+    <string name="stops_none">Nothing found on the route ahead.</string>
+    <string name="stops_failed">Couldn\'t search along the route. Try again in a moment.</string>
+    <string name="stops_offline">You\'re offline. Searching along the route needs an internet connection.</string>
+    <string name="continue_to">Continue to %1$s</string>
+    <string name="continue_trip">Continue trip</string>
 </resources>
