@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.nav.Destination
+import com.joegineered.ontheroad.nav.TripAction
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.PlaceSearch
 import com.joegineered.ontheroad.search.QuickPlace
@@ -27,9 +28,14 @@ import kotlinx.coroutines.flow.onEach
  * Destination search for Android Auto. Shows saved and recent places until the driver types, then
  * search results. The car decides when typing is allowed (typically only when parked); saved and
  * recent places can be picked at any time. [initialQuery] starts a search straight away, e.g. for a
- * place named to the car's assistant.
+ * place named to the car's assistant, and [action] is what the driver asked to do with it. A typed
+ * search previews the routes first, as on the phone.
  */
-class CarSearchScreen(carContext: CarContext, initialQuery: String = "") : Screen(carContext) {
+class CarSearchScreen(
+    carContext: CarContext,
+    initialQuery: String = "",
+    private val action: TripAction = TripAction.DIRECTIONS,
+) : Screen(carContext) {
   private val viewModel = AppGraph.navigationViewModel
 
   private val search =
@@ -159,11 +165,13 @@ class CarSearchScreen(carContext: CarContext, initialQuery: String = "") : Scree
         .build()
   }
 
-  /** Previews routes to [place]; during a trip, goes straight there instead. */
+  /**
+   * Previews routes to [place], or carries out what the driver asked for by voice. During a trip,
+   * this may ask whether to replace it or add a stop.
+   */
   private fun navigateTo(place: Place) {
-    val destination = Destination.from(place)
-    if (viewModel.navigationUiState.value.isNavigating()) viewModel.startNavigation(destination)
-    else viewModel.selectDestination(destination)
-    screenManager.pop()
+    val screens = screenManager
+    screens.pop()
+    goToDestination(carContext, screens, Destination.from(place), action)
   }
 }

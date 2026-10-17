@@ -9,10 +9,8 @@ import androidx.car.app.Session
 import androidx.car.app.SessionInfo
 import androidx.car.app.validation.HostValidator
 import com.joegineered.ontheroad.AppGraph
-import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.nav.DestinationRequest
-import com.joegineered.ontheroad.nav.parseDestinationIntent
-import com.joegineered.ontheroad.nav.toRequest
+import com.joegineered.ontheroad.nav.parseDestinationRequest
 
 class OtrCarAppService : CarAppService() {
 
@@ -24,8 +22,8 @@ class OtrCarAppService : CarAppService() {
 
 /**
  * The Android Auto session. Destinations come as `geo:` or `google.navigation:` intents, for
- * example from the car's assistant ("navigate to Kamppi"): in [onCreateScreen] when the app
- * starts, and in [onNewIntent] while it runs.
+ * example from the car's assistant ("navigate to Kamppi", "add a stop at …"): in [onCreateScreen]
+ * when the app starts, and in [onNewIntent] while it runs.
  */
 class OtrCarSession : Session() {
   private var navigationScreen: CarNavigationScreen? = null
@@ -42,39 +40,32 @@ class OtrCarSession : Session() {
     AppGraph.startTraffic()
     AppGraph.offlineMaps.start()
     val root = CarNavigationScreen(carContext).also { navigationScreen = it }
-    return when (val request = parseDestinationIntent(intent)?.toRequest()) {
-      is DestinationRequest.Go -> root.also { go(request.destination) }
-      // The screen returned here goes on top of the ones pushed before it.
-      is DestinationRequest.Search -> {
-        screenManager().push(root)
-        CarSearchScreen(carContext, initialQuery = request.query)
+    val request = parseDestinationRequest(intent) ?: return root
+    // The screen returned here goes on top of the ones pushed before it, so the map goes first.
+    val screens = screenManager()
+    screens.push(root)
+    return when (request) {
+      // A trip started on the phone may be in progress, so this can ask about it.
+      is DestinationRequest.Go -> {
+        goToDestination(carContext, screens, request.destination, request.action)
+        screens.top
       }
-      null -> root
+      is DestinationRequest.Search ->
+          CarSearchScreen(carContext, initialQuery = request.query, action = request.action)
     }
   }
 
   override fun onNewIntent(intent: Intent) {
-    val request = parseDestinationIntent(intent)?.toRequest() ?: return
+    val request = parseDestinationRequest(intent) ?: return
     val screens = screenManager()
     screens.popToRoot()
     when (request) {
-      is DestinationRequest.Go -> go(request.destination)
+      is DestinationRequest.Go ->
+          goToDestination(carContext, screens, request.destination, request.action)
       is DestinationRequest.Search ->
-          screens.push(CarSearchScreen(carContext, initialQuery = request.query))
-    }
-  }
-
-  /**
-   * Drives to [destination], replacing the current trip if there is one. Right after the app
-   * starts there may be no location fix yet, so it shows the route preview instead, which is
-   * planned on the first fix.
-   */
-  private fun go(destination: Destination) {
-    val viewModel = AppGraph.navigationViewModel
-    if (viewModel.navigationUiState.value.isNavigating() || viewModel.location.value != null) {
-      viewModel.startNavigation(destination)
-    } else {
-      viewModel.selectDestination(destination)
+          screens.push(
+              CarSearchScreen(carContext, initialQuery = request.query, action = request.action)
+          )
     }
   }
 

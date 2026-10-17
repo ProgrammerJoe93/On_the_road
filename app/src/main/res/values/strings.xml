@@ -182,6 +182,10 @@
     <string name="trip_stops">Stops on this trip</string>
     <string name="skip_stop">Skip</string>
     <string name="skip_stop_named">Skip %1$s</string>
+    <string name="trip_choice_title">Change your trip?</string>
+    <string name="trip_choice_message">Add %1$s as a stop, or drive there instead of your current destination?</string>
+    <string name="trip_choice_add_stop">Add as stop</string>
+    <string name="trip_choice_replace">Replace trip</string>
     <plurals name="route_stops">
         <item quantity="one">%1$d stop</item>
         <item quantity="other">%1$d stops</item>

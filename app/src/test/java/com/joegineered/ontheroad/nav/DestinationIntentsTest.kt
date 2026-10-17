@@ -76,4 +76,45 @@ class DestinationIntentsTest {
   fun `links with neither coordinates nor a query are ignored`() {
     assertNull(parse("geo", "0,0")?.toRequest())
   }
+
+  private fun request(scheme: String, ssp: String) =
+      parseDestinationRequestUri(scheme, ssp, decode = { URLDecoder.decode(it, "UTF-8") })
+
+  @Test
+  fun `the assistant's intent parameter says what to do with the place`() {
+    assertEquals(
+        DestinationRequest.Search("1600 Amphitheatre parkway", TripAction.ADD_STOP),
+        request("geo", "0,0?q=1600+Amphitheatre+parkway&mode=b&intent=add_a_stop"),
+    )
+    assertEquals(
+        TripAction.DIRECTIONS,
+        request("geo", "60.17,24.94?q=Kamppi&intent=directions")!!.action,
+    )
+    assertEquals(TripAction.NAVIGATE, request("geo", "0,0?q=Kamppi&intent=navigation")!!.action)
+    assertEquals(TripAction.NAVIGATE, request("geo", "0,0?q=Kamppi")!!.action)
+    assertEquals(TripAction.NAVIGATE, request("geo", "0,0?q=Kamppi&intent=something_new")!!.action)
+    assertEquals(TripAction.NAVIGATE, request("google.navigation", "q=60.17,24.94")!!.action)
+  }
+
+  @Test
+  fun `during a trip, only an explicit add a stop skips the question`() {
+    fun during(action: TripAction) =
+        destinationOutcome(action, navigating = true, previewing = false, hasLocation = true)
+    assertEquals(DestinationOutcome.ADD_TO_TRIP, during(TripAction.ADD_STOP))
+    assertEquals(DestinationOutcome.ASK, during(TripAction.NAVIGATE))
+    assertEquals(DestinationOutcome.ASK, during(TripAction.DIRECTIONS))
+  }
+
+  @Test
+  fun `without a trip, navigate starts and directions previews`() {
+    fun idle(action: TripAction, previewing: Boolean = false, hasLocation: Boolean = true) =
+        destinationOutcome(action, navigating = false, previewing, hasLocation)
+    assertEquals(DestinationOutcome.START, idle(TripAction.NAVIGATE))
+    assertEquals(DestinationOutcome.PREVIEW, idle(TripAction.DIRECTIONS))
+    // "Add a stop" with no trip simply goes there, or joins the routes being previewed.
+    assertEquals(DestinationOutcome.START, idle(TripAction.ADD_STOP))
+    assertEquals(DestinationOutcome.ADD_TO_PREVIEW, idle(TripAction.ADD_STOP, previewing = true))
+    // Before the first location fix, the preview waits for it rather than failing.
+    assertEquals(DestinationOutcome.PREVIEW, idle(TripAction.NAVIGATE, hasLocation = false))
+  }
 }
