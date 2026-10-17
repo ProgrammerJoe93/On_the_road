@@ -7,6 +7,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
 
 - **Map:** vector map from [OpenFreeMap](https://openfreemap.org/) (no API key needed).
 - **Routing:** car routes from [Valhalla](https://github.com/valhalla/valhalla), with instructions in the device language.
+- **Route choice:** up to three routes to each destination, compared by time, distance, main road
+  and (in Finland) traffic events on them; avoid tolls, motorways or ferries.
 - **Turn-by-turn navigation:**
   - lane guidance and a speed-limit sign;
   - spoken instructions, with a choice of speech rate, or warnings only;

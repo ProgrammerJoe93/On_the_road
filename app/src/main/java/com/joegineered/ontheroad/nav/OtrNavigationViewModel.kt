@@ -13,7 +13,10 @@ import com.stadiamaps.ferrostar.core.annotation.valhalla.valhallaExtendedOSRMAnn
 import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
 import com.stadiamaps.ferrostar.core.location.toUserLocation
 import com.stadiamaps.ferrostar.core.NavigationState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -28,8 +31,10 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uniffi.ferrostar.GeographicCoordinate
+import uniffi.ferrostar.Route
 import uniffi.ferrostar.TripState
 import uniffi.ferrostar.TripSummary
 import uniffi.ferrostar.UserLocation
@@ -65,6 +70,22 @@ sealed interface RoutingStatus {
   data object Offline : RoutingStatus
 }
 
+/** One of the routes offered before starting: [via] names it, [trafficEvents] are on it now. */
+data class RouteOption(val route: Route, val via: String?, val trafficEvents: Int) {
+  val durationSeconds: Double
+    get() = route.steps.sumOf { it.duration }
+}
+
+/** Routes to the selected destination, best first, for the driver to choose from. */
+data class RoutePreview(
+    val destination: Destination,
+    val options: List<RouteOption>,
+    val selectedIndex: Int = 0,
+) {
+  val selected: RouteOption
+    get() = options[selectedIndex]
+}
+
 /** A trip to a new destination has started (not a reroute). */
 data class TripStart(val destinationName: String, val route: List<GeographicCoordinate>)
 
@@ -77,6 +98,10 @@ class OtrNavigationViewModel(
     private val ferrostarCore: FerrostarCore,
     private val locationProvider: NavigationLocationProvider,
     private val recentDestinations: RecentDestinations,
+    /** The best route followed by alternatives, for the route preview. */
+    private val planRoutes: suspend (UserLocation, List<Waypoint>) -> List<Route>,
+    /** How many current traffic events are on a route. */
+    private val trafficEventsOnRoute: (List<GeographicCoordinate>) -> Int = { 0 },
     /** Whether the navigation voice is still speaking, so arrival doesn't cut it off. */
     private val isSpeaking: () -> Boolean = { false },
     private val isOnline: () -> Boolean = { true },
@@ -92,6 +117,11 @@ class OtrNavigationViewModel(
 
   private val _routingStatus = MutableStateFlow<RoutingStatus>(RoutingStatus.Idle)
   val routingStatus: StateFlow<RoutingStatus> = _routingStatus.asStateFlow()
+
+  private val _preview = MutableStateFlow<RoutePreview?>(null)
+  /** Routes to the selected destination once planned; null while none are available. */
+  val preview: StateFlow<RoutePreview?> = _preview.asStateFlow()
+  private var previewJob: Job? = null
 
   private val _simulated = MutableStateFlow(false)
   val simulated: StateFlow<Boolean> = _simulated.asStateFlow()
@@ -127,7 +157,15 @@ class OtrNavigationViewModel(
             if (permitted) locationProvider.locationUpdates(1000L).map { it.toUserLocation() }
             else emptyFlow()
           }
-          .collect { _location.value = it }
+          .collect { location ->
+            val firstFix = _location.value == null
+            _location.value = location
+            // A destination chosen before the first fix gets its routes now.
+            val destination = _selectedDestination.value
+            if (firstFix && destination != null && _routingStatus.value == RoutingStatus.Idle) {
+              planPreview(destination)
+            }
+          }
     }
     viewModelScope.launch { ferrostarCore.state.collect(::watchForArrival) }
   }
@@ -196,15 +234,66 @@ class OtrNavigationViewModel(
     selectDestination(Destination(coordinate, label))
   }
 
+  /** Chooses a destination and plans routes to it, to preview before starting. */
   fun selectDestination(destination: Destination) {
     _selectedDestination.value = destination
-    _routingStatus.value = RoutingStatus.Idle
     _arrival.value = null
+    planPreview(destination)
   }
 
   fun clearDestination() {
+    previewJob?.cancel()
     _selectedDestination.value = null
+    _preview.value = null
     _routingStatus.value = RoutingStatus.Idle
+  }
+
+  fun selectRoute(index: Int) {
+    _preview.update { preview ->
+      preview?.copy(selectedIndex = index.coerceIn(0, preview.options.lastIndex))
+    }
+  }
+
+  /** Plans the previewed routes again, e.g. after the roads to avoid changed. */
+  fun refreshPreview() {
+    val destination = _selectedDestination.value ?: return
+    if (navigationUiState.value.isNavigating()) return
+    planPreview(destination)
+  }
+
+  private fun planPreview(destination: Destination) {
+    previewJob?.cancel()
+    _preview.value = null
+    val origin = _location.value
+    if (origin == null) {
+      // Planned on the first location fix instead.
+      _routingStatus.value = RoutingStatus.Idle
+      return
+    }
+    if (!isOnline()) {
+      _routingStatus.value = RoutingStatus.Offline
+      return
+    }
+    _routingStatus.value = RoutingStatus.Loading
+    previewJob =
+        viewModelScope.launch(Dispatchers.IO) {
+          try {
+            val routes = planRoutes(origin, listOf(destination.toWaypoint()))
+            if (routes.isEmpty()) error("no route returned")
+            val via = distinctiveRoads(routes.map { route -> route.steps.map { it.roadName to it.distance } })
+            val options =
+                routes.mapIndexed { i, route -> RouteOption(route, via[i], trafficEventsOnRoute(route.geometry)) }
+            ensureActive()
+            if (_selectedDestination.value != destination) return@launch
+            _preview.value = RoutePreview(destination, options)
+            _routingStatus.value = RoutingStatus.Idle
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            Log.e(TAG, "Route preview failed", e)
+            _routingStatus.value = routingFailure(e)
+          }
+        }
   }
 
   fun setSimulated(simulated: Boolean) {
@@ -212,9 +301,23 @@ class OtrNavigationViewModel(
     if (!simulated) locationProvider.disableSimulation()
   }
 
+  /** Starts the previewed route chosen, or plans one if there is no preview (e.g. it failed). */
   fun startSelectedDestination() {
     val destination = _selectedDestination.value ?: return
-    startNavigation(destination)
+    val preview = _preview.value?.takeIf { it.destination == destination }
+    if (preview == null) {
+      startNavigation(destination)
+      return
+    }
+    _routingStatus.value = RoutingStatus.Loading
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        beginTrip(destination, preview.selected.route)
+      } catch (e: Exception) {
+        Log.e(TAG, "Could not start navigation", e)
+        _routingStatus.value = RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
+      }
+    }
   }
 
   fun startNavigation(destination: Destination) {
@@ -227,43 +330,48 @@ class OtrNavigationViewModel(
 
     viewModelScope.launch(Dispatchers.IO) {
       try {
-        val routes =
-            ferrostarCore.getRoutes(
-                origin,
-                listOf(Waypoint(coordinate = destination.coordinate, kind = WaypointKind.BREAK)),
-            )
+        val routes = ferrostarCore.getRoutes(origin, listOf(destination.toWaypoint()))
         val route = routes.firstOrNull() ?: error("no route returned")
-
-        if (_simulated.value) locationProvider.enableSimulationOn(route)
-
-        val newTrip = destination != activeDestination
-        setDestination(destination.label)
-        activeDestination = destination
-        parkedNearby.reset()
-        _arrival.value = null
-        if (navigationUiState.value.isNavigating()) {
-          ferrostarCore.replaceRoute(route)
-        } else {
-          ferrostarCore.startNavigation(route)
-        }
-        _selectedDestination.value = null
-        _routingStatus.value = RoutingStatus.Idle
-        val place = destination.toPlace(destination.coordinateText())
-        if (newTrip) _tripStarts.tryEmit(TripStart(place.title, route.geometry))
-        // Remembering the destination is best-effort; it must not fail an active session.
-        runCatching { recentDestinations.add(place) }
-            .onFailure { Log.w(TAG, "Could not save recent destination", it) }
+        beginTrip(destination, route)
       } catch (e: Exception) {
         Log.e(TAG, "Routing failed", e)
-        // Valhalla answers HTTP 400 ("NoRoute") when the destination can't be reached by car.
-        val noRoute = e.message?.contains("status code 400") == true
-        _routingStatus.value =
-            when {
-              noRoute -> RoutingStatus.NoRoute
-              !isOnline() -> RoutingStatus.Offline
-              else -> RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
-            }
+        _routingStatus.value = routingFailure(e)
       }
+    }
+  }
+
+  /** Starts navigating [route], or switches the active session to it (a reroute). */
+  private suspend fun beginTrip(destination: Destination, route: Route) {
+    if (_simulated.value) locationProvider.enableSimulationOn(route)
+
+    val newTrip = destination != activeDestination
+    setDestination(destination.label)
+    activeDestination = destination
+    parkedNearby.reset()
+    _arrival.value = null
+    if (navigationUiState.value.isNavigating()) {
+      ferrostarCore.replaceRoute(route)
+    } else {
+      ferrostarCore.startNavigation(route)
+    }
+    previewJob?.cancel()
+    _selectedDestination.value = null
+    _preview.value = null
+    _routingStatus.value = RoutingStatus.Idle
+    val place = destination.toPlace(destination.coordinateText())
+    if (newTrip) _tripStarts.tryEmit(TripStart(place.title, route.geometry))
+    // Remembering the destination is best-effort; it must not fail an active session.
+    runCatching { recentDestinations.add(place) }
+        .onFailure { Log.w(TAG, "Could not save recent destination", it) }
+  }
+
+  private fun routingFailure(e: Exception): RoutingStatus {
+    // Valhalla answers HTTP 400 ("NoRoute") when the destination can't be reached by car.
+    val noRoute = e.message?.contains("status code 400") == true
+    return when {
+      noRoute -> RoutingStatus.NoRoute
+      !isOnline() -> RoutingStatus.Offline
+      else -> RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
     }
   }
 
@@ -285,6 +393,8 @@ class OtrNavigationViewModel(
     activeDestination = null
     parkedNearby.reset()
   }
+
+  private fun Destination.toWaypoint() = Waypoint(coordinate = coordinate, kind = WaypointKind.BREAK)
 
   private fun Destination.coordinateText() =
       "%.5f, %.5f".format(Locale.ROOT, coordinate.lat, coordinate.lng)

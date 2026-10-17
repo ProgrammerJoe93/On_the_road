@@ -3,6 +3,7 @@ package com.joegineered.ontheroad.traffic
 import android.util.Log
 import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.cameras.MeasuredPolyline
+import com.joegineered.ontheroad.cameras.PolylineIndex
 import com.joegineered.ontheroad.settings.SettingsRepository
 import com.stadiamaps.ferrostar.core.NavigationState
 import com.stadiamaps.ferrostar.core.isNavigating
@@ -86,6 +87,15 @@ class TrafficController(
 
   /** Active closures, for the route provider to avoid. Empty when live traffic is off. */
   fun closures(): List<TrafficEvent> = _events.value.filter { it.isClosure }
+
+  /** Current events along [route], to compare routes before starting one. */
+  fun eventsOnRoute(route: List<LatLng>): List<TrafficEvent> {
+    val events = _events.value
+    if (events.isEmpty() || route.size < 2) return emptyList()
+    // Indexed rather than projected point by point, which is slow for long routes.
+    val line = PolylineIndex(route)
+    return events.filter { event -> event.lines.flatten().any { line.isNear(it, ON_ROUTE_METRES) } }
+  }
 
   fun select(item: Any?) {
     _selected.value = item
@@ -189,5 +199,7 @@ class TrafficController(
     /** Below this share of free-flow speed, traffic counts as slow (Fintraffic's "slow" class). */
     const val SLOW_PERCENT = 75.0
     const val MIN_REROUTE_DISTANCE = 500.0
+    /** As in [TrafficAlertEngine]: an event this close to the route is on it. */
+    const val ON_ROUTE_METRES = 30.0
   }
 }

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.joegineered.ontheroad.chargers.SocketType
+import com.joegineered.ontheroad.nav.RouteAvoidance
 import androidx.datastore.preferences.preferencesDataStore
 import java.util.Locale
 import kotlinx.coroutines.flow.Flow
@@ -49,6 +50,24 @@ class SettingsRepository(private val context: Context) {
 
   suspend fun setSpeechRate(rate: SpeechRate) {
     context.dataStore.edit { it[SPEECH_RATE] = rate.name }
+  }
+
+  /** Roads routes avoid where they reasonably can. */
+  val routeAvoidance: Flow<RouteAvoidance> =
+      context.dataStore.data.map { prefs ->
+        RouteAvoidance(
+            tolls = prefs[AVOID_TOLLS] ?: false,
+            motorways = prefs[AVOID_MOTORWAYS] ?: false,
+            ferries = prefs[AVOID_FERRIES] ?: false,
+        )
+      }
+
+  suspend fun setRouteAvoidance(avoid: RouteAvoidance) {
+    context.dataStore.edit {
+      it[AVOID_TOLLS] = avoid.tolls
+      it[AVOID_MOTORWAYS] = avoid.motorways
+      it[AVOID_FERRIES] = avoid.ferries
+    }
   }
 
   /** Units for distances and speeds. */
@@ -128,6 +147,9 @@ class SettingsRepository(private val context: Context) {
     private val TURN_INSTRUCTIONS_SPOKEN = booleanPreferencesKey("turn_instructions_spoken")
     private val SPEECH_RATE = stringPreferencesKey("speech_rate")
     private val UNIT_SYSTEM = stringPreferencesKey("unit_system")
+    private val AVOID_TOLLS = booleanPreferencesKey("avoid_tolls")
+    private val AVOID_MOTORWAYS = booleanPreferencesKey("avoid_motorways")
+    private val AVOID_FERRIES = booleanPreferencesKey("avoid_ferries")
 
     /**
      * Countries where apps warning of speed camera locations are prohibited or restricted. This

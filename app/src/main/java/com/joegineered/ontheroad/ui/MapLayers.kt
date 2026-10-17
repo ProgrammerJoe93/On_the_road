@@ -8,14 +8,20 @@ import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.cameras.MatchedCamera
 import com.joegineered.ontheroad.chargers.ChargerController
 import com.joegineered.ontheroad.chargers.ChargingStation
+import com.joegineered.ontheroad.nav.RouteOption
+import com.joegineered.ontheroad.nav.RoutePreview
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.maplibre.compose.util.ClickResult
+import org.maplibre.compose.util.FeaturesClickHandler
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.value.IconPitchAlignment
+import org.maplibre.compose.expressions.value.LineCap
+import org.maplibre.compose.expressions.value.LineJoin
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.FillLayer
 import org.maplibre.compose.layers.LineLayer
@@ -23,10 +29,13 @@ import org.maplibre.compose.offline.OfflinePack
 import org.maplibre.compose.offline.rememberOfflinePacksSource
 import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.sources.GeoJsonData
+import org.maplibre.compose.sources.GeoJsonSource
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.util.MaplibreComposable
 import org.maplibre.spatialk.geojson.Feature
 import org.maplibre.spatialk.geojson.FeatureCollection
+import org.maplibre.spatialk.geojson.LineString
+import org.maplibre.spatialk.geojson.Position
 import org.maplibre.spatialk.geojson.Point
 import uniffi.ferrostar.GeographicCoordinate
 
@@ -147,5 +156,68 @@ fun OfflineAreasLayer(packs: Set<OfflinePack>) {
       source = source,
       color = const(Color(0xFF1E5AA8)),
       width = const(2.dp),
+  )
+}
+
+/**
+ * Routes offered before starting: the alternatives in grey under the chosen route in blue.
+ * Tapping an alternative calls [onSelect] with its index.
+ */
+@Composable
+@MaplibreComposable
+fun RoutePreviewLayer(preview: RoutePreview?, onSelect: ((Int) -> Unit)? = null) {
+  preview ?: return
+  val (chosen, alternatives) = preview.options.withIndex().partition { it.index == preview.selectedIndex }
+  fun features(options: List<IndexedValue<RouteOption>>) =
+      FeatureCollection(
+          options.map { (index, option) ->
+            Feature(
+                geometry = LineString(option.route.geometry.map { Position(longitude = it.lng, latitude = it.lat) }),
+                properties = buildJsonObject { put("index", index) },
+            )
+          }
+      )
+
+  if (alternatives.isNotEmpty()) {
+    val source = rememberGeoJsonSource(GeoJsonData.Features(features(alternatives)))
+    RouteLine("otr-route-alternatives", source, Color(0xFF8E99AB), onClick = onSelect)
+  }
+  val source = rememberGeoJsonSource(GeoJsonData.Features(features(chosen)))
+  RouteLine("otr-route-chosen", source, Color(0xFF1E5AA8), onClick = null)
+}
+
+/** A route line with a white casing. */
+@Composable
+@MaplibreComposable
+private fun RouteLine(
+    id: String,
+    source: GeoJsonSource,
+    color: Color,
+    onClick: ((Int) -> Unit)?,
+) {
+  val handler: FeaturesClickHandler? =
+      onClick?.let { select ->
+        { features ->
+          features.firstOrNull()?.properties?.get("index")?.jsonPrimitive?.intOrNull?.let(select)
+          ClickResult.Consume
+        }
+      }
+  LineLayer(
+      id = "$id-casing",
+      source = source,
+      color = const(Color.White),
+      width = const(9.dp),
+      cap = const(LineCap.Round),
+      join = const(LineJoin.Round),
+      onClick = handler,
+  )
+  LineLayer(
+      id = id,
+      source = source,
+      color = const(color),
+      width = const(6.dp),
+      cap = const(LineCap.Round),
+      join = const(LineJoin.Round),
+      onClick = handler,
   )
 }

@@ -8,7 +8,11 @@ import androidx.car.app.model.Alert
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.CarText
+import androidx.activity.OnBackPressedCallback
+import androidx.car.app.model.ItemList
+import androidx.car.app.model.Row
 import androidx.car.app.model.Template
+import androidx.car.app.navigation.model.RoutePreviewNavigationTemplate
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
@@ -36,6 +40,11 @@ import androidx.lifecycle.LifecycleOwner
 import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.cameras.CameraWarning
+import com.joegineered.ontheroad.cameras.displayedSpeedLimit
+import com.joegineered.ontheroad.nav.RoutingStatus
+import com.joegineered.ontheroad.ui.RoutePreviewLayer
+import com.joegineered.ontheroad.ui.formatDuration
+import com.joegineered.ontheroad.ui.formatTripDistance
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.chargers.SocketType
 import com.joegineered.ontheroad.nav.Arrival
@@ -111,6 +120,14 @@ class CarNavigationScreen(
 
   private var uiState: NavigationUiState? by mutableStateOf(null)
 
+  /** Back (the header's back action) closes the route preview; enabled while it shows. */
+  private val cancelPreview =
+      object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+          viewModel.clearDestination()
+        }
+      }
+
   /** The car's day/night signal (headlights or the car clock); updated on configuration change. */
   private var carDarkMode by mutableStateOf(carContext.isDarkMode)
   private var themeMode by mutableStateOf(ThemeMode.AUTO)
@@ -131,6 +148,10 @@ class CarNavigationScreen(
     AppGraph.speedCameras.announcements.onEach(::showCameraAlert).launchIn(scope)
     AppGraph.traffic.announcements.onEach(::showTrafficAlert).launchIn(scope)
     viewModel.arrival.onEach { invalidate() }.launchIn(scope)
+    viewModel.selectedDestination.onEach { invalidate() }.launchIn(scope)
+    viewModel.preview.onEach { invalidate() }.launchIn(scope)
+    viewModel.routingStatus.onEach { invalidate() }.launchIn(scope)
+    carContext.onBackPressedDispatcher.addCallback(this, cancelPreview)
     AppGraph.settings.themeMode.onEach { themeMode = it }.launchIn(scope)
 
     initialDestination?.location?.let { location ->
@@ -188,6 +209,7 @@ class CarNavigationScreen(
     val liveTraffic by AppGraph.settings.liveTrafficEnabled.collectAsState(initial = true)
     val trafficEvents by AppGraph.traffic.events.collectAsState()
     val slowTraffic by AppGraph.traffic.slowTraffic.collectAsState()
+    val preview by viewModel.preview.collectAsState()
 
     browsingPadding = normalPadding
     navigationMapState = mapState
@@ -196,6 +218,10 @@ class CarNavigationScreen(
       if (uiState?.isNavigating() == true) mapState.recenter(isNavigating = true)
     }
     LaunchedEffect(mapState) { snapshotFlow { mapState.cameraMode }.collectLatest { invalidate() } }
+    LaunchedEffect(preview?.options, mapState) {
+      val bounds = preview?.options?.flatMap { it.route.geometry }?.boundingBox() ?: return@LaunchedEffect
+      mapState.showRouteOverview(boundingBox = bounds, paddingValues = normalPadding)
+    }
     LaunchedEffect(mapState, showChargers) {
       if (!showChargers) return@LaunchedEffect
       snapshotFlow {
@@ -223,6 +249,7 @@ class CarNavigationScreen(
         if (liveTraffic) TrafficLayer(trafficEvents, slowTraffic)
         if (showChargers) ChargerLayer(chargers.filter { it.matches(plugTypes) })
         SpeedCameraLayer(cameras)
+        if (uiState?.isNavigating() != true) RoutePreviewLayer(preview)
       }
 
       OfflineIndicator(Modifier.align(Alignment.TopEnd).padding(normalPadding).padding(8.dp))
@@ -256,6 +283,8 @@ class CarNavigationScreen(
 
   override fun onGetTemplate(): Template {
     val state = uiState
+    val destination = viewModel.selectedDestination.value
+    cancelPreview.isEnabled = state?.isNavigating() != true && destination != null
     if (state != null && state.isNavigating()) {
       return NavigationTemplateBuilder(carContext)
           .setBackupDrivingSide(DrivingSide.RIGHT)
@@ -271,6 +300,7 @@ class CarNavigationScreen(
     }
 
     viewModel.arrival.value?.let { return arrivalTemplate(it) }
+    destination?.let { return routePreviewTemplate(it) }
 
     // Not navigating: a pannable map with destination search.
     val searchAction =
@@ -295,6 +325,87 @@ class CarNavigationScreen(
         .setActionStrip(
             ActionStrip.Builder().addAction(searchAction).addAction(chargersAction).build()
         )
+        .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
+        .build()
+  }
+
+  /**
+   * The routes to the chosen destination, to pick one and start. While they load, the car shows
+   * its loading state; if planning fails, the reason over the map.
+   */
+  private fun routePreviewTemplate(destination: Destination): Template {
+    val title = destination.label ?: carContext.getString(R.string.selected_destination)
+    val preview = viewModel.preview.value?.takeIf { it.destination == destination }
+    val start =
+        Action.Builder()
+            .setTitle(carContext.getString(R.string.start_navigation))
+            .setOnClickListener { viewModel.startSelectedDestination() }
+            .build()
+    if (preview == null) {
+      val error =
+          when (val status = viewModel.routingStatus.value) {
+            is RoutingStatus.Failed -> carContext.getString(R.string.route_error, status.message)
+            RoutingStatus.NoRoute -> carContext.getString(R.string.no_route)
+            RoutingStatus.Offline -> carContext.getString(R.string.route_offline)
+            RoutingStatus.Idle,
+            RoutingStatus.Loading -> null
+          }
+      if (error == null) {
+        return RoutePreviewNavigationTemplate.Builder()
+            .setTitle(title)
+            .setHeaderAction(Action.BACK)
+            .setLoading(true)
+            .build()
+      }
+      val cancel =
+          Action.Builder()
+              .setTitle(carContext.getString(R.string.cancel))
+              .setOnClickListener { viewModel.clearDestination() }
+              .build()
+      return NavigationTemplate.Builder()
+          .setNavigationInfo(MessageInfo.Builder(title).setText(error).build())
+          .setActionStrip(ActionStrip.Builder().addAction(start).addAction(cancel).build())
+          .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
+          .build()
+    }
+
+    val routes =
+        ItemList.Builder()
+            .apply {
+              preview.options.forEach { option ->
+                val summary =
+                    listOfNotNull(
+                            formatTripDistance(option.route.distance),
+                            option.via?.let { carContext.getString(R.string.route_via, it) },
+                        )
+                        .joinToString(" · ")
+                addItem(
+                    Row.Builder()
+                        .setTitle(formatDuration(carContext, option.durationSeconds.toLong()))
+                        .addText(summary)
+                        .apply {
+                          if (option.trafficEvents > 0) {
+                            addText(
+                                carContext.resources.getQuantityString(
+                                    R.plurals.route_traffic_events,
+                                    option.trafficEvents,
+                                    option.trafficEvents,
+                                )
+                            )
+                          }
+                        }
+                        .build()
+                )
+              }
+            }
+            .setSelectedIndex(preview.selectedIndex)
+            .setOnSelectedListener { viewModel.selectRoute(it) }
+            .build()
+    return RoutePreviewNavigationTemplate.Builder()
+        .setTitle(title)
+        .setHeaderAction(Action.BACK)
+        .setItemList(routes)
+        .setNavigateAction(start)
         .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
         .build()
   }
@@ -350,7 +461,9 @@ class CarNavigationScreen(
         Alert.Builder(warning.camera.id.hashCode(), title, CAMERA_ALERT_DURATION_MS)
             .setIcon(icon)
             .apply {
-              warning.camera.maxSpeedKmh?.let { setSubtitle(CarText.create("$it")) }
+              warning.camera.maxSpeedKmh?.let {
+                setSubtitle(CarText.create("${displayedSpeedLimit(it, AppConfig.usesMetricUnits)}"))
+              }
             }
             .build()
     carContext.getCarService(AppManager::class.java).showAlert(alert)

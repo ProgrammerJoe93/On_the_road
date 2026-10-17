@@ -4,6 +4,9 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 data class LatLng(val lat: Double, val lng: Double)
@@ -105,6 +108,57 @@ class MeasuredPolyline(val points: List<LatLng>) {
     }
     return best
   }
+}
+
+/**
+ * Answers "is this point within a few tens of metres of the line?" quickly for long lines (whole
+ * routes), by bucketing segments into a grid. Distances asked about must be smaller than a cell
+ * (0.005°: about 550 m north–south, 190 m east–west at 70°N).
+ */
+class PolylineIndex(private val points: List<LatLng>, private val cellDegrees: Double = 0.005) {
+  private val cells = HashMap<Long, MutableList<Int>>()
+
+  init {
+    for (i in 0 until points.size - 1) {
+      val a = points[i]
+      val b = points[i + 1]
+      for (x in cell(min(a.lng, b.lng))..cell(max(a.lng, b.lng))) {
+        for (y in cell(min(a.lat, b.lat))..cell(max(a.lat, b.lat))) {
+          cells.getOrPut(key(x, y)) { mutableListOf() }.add(i)
+        }
+      }
+    }
+  }
+
+  fun isNear(p: LatLng, maxMetres: Double): Boolean {
+    val x = cell(p.lng)
+    val y = cell(p.lat)
+    val projection = LocalProjection(p)
+    for (dx in -1..1) {
+      for (dy in -1..1) {
+        val segments = cells[key(x + dx, y + dy)] ?: continue
+        if (segments.any { segmentOffset(projection, points[it], points[it + 1]) <= maxMetres }) return true
+      }
+    }
+    return false
+  }
+
+  private fun cell(degrees: Double) = floor(degrees / cellDegrees).toInt()
+
+  private fun key(x: Int, y: Int) = (x.toLong() shl 32) or (y.toLong() and 0xFFFFFFFFL)
+}
+
+/** Distance in metres from the projection origin to the segment [a]–[b]. */
+private fun segmentOffset(projection: LocalProjection, a: LatLng, b: LatLng): Double {
+  val ax = projection.x(a)
+  val ay = projection.y(a)
+  val dx = projection.x(b) - ax
+  val dy = projection.y(b) - ay
+  val lengthSquared = dx * dx + dy * dy
+  val t = if (lengthSquared == 0.0) 0.0 else ((-ax * dx - ay * dy) / lengthSquared).coerceIn(0.0, 1.0)
+  val px = ax + t * dx
+  val py = ay + t * dy
+  return sqrt(px * px + py * py)
 }
 
 /** Douglas–Peucker simplification with a tolerance in metres. */

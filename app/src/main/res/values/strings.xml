@@ -83,6 +83,17 @@
     <string name="camera_warnings_summary">Chime and voice warning before speed cameras</string>
     <string name="simulate_drive_summary">Replay routes instead of using GPS</string>
     <string name="unit_mph">mph</string>
+    <string name="finding_routes">Finding routes…</string>
+    <string name="route_via">via %1$s</string>
+    <plurals name="route_traffic_events">
+        <item quantity="one">%d traffic event</item>
+        <item quantity="other">%d traffic events</item>
+    </plurals>
+    <string name="avoid_tolls">Avoid tolls</string>
+    <string name="avoid_motorways">Avoid motorways</string>
+    <string name="avoid_ferries">Avoid ferries</string>
+    <string name="settings_section_routes">Routes</string>
+    <string name="avoid_hint">Routes still use these roads when there\'s no reasonable way around them.</string>
     <string name="units">Units</string>
     <string name="units_auto">Automatic</string>
     <string name="units_metric">Metric</string>

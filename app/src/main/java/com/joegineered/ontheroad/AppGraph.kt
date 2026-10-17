@@ -15,7 +15,10 @@ import com.joegineered.ontheroad.cameras.SpeedCameraRepository
 import com.joegineered.ontheroad.chargers.ChargerController
 import com.joegineered.ontheroad.chargers.ChargerRepository
 import com.joegineered.ontheroad.config.AppConfig
+import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
+import com.joegineered.ontheroad.nav.RouteAvoidance
+import com.joegineered.ontheroad.nav.valhallaOptions
 import com.joegineered.ontheroad.nav.TrafficAwareRouteProvider
 import com.joegineered.ontheroad.traffic.DigitrafficClient
 import com.joegineered.ontheroad.traffic.TrafficController
@@ -30,6 +33,8 @@ import com.joegineered.ontheroad.voice.NavigationVoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collectIndexed
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -79,6 +84,13 @@ object AppGraph {
         AppConfig.unitSystem.value = units
         notificationDistanceFormatter.distanceMeasurementSystemOverride =
             AppConfig.distanceMeasurementSystem()
+      }
+    }
+    scope.launch {
+      // A change replans the route preview; the first value is the stored setting.
+      settings.routeAvoidance.distinctUntilChanged().collectIndexed { i, avoid ->
+        routeAvoidance = avoid
+        if (i > 0) navigationViewModel.refreshPreview()
       }
     }
     scope.launch { settings.turnInstructionsSpoken.collect { voice.turnInstructionsSpoken = it } }
@@ -142,24 +154,30 @@ object AppGraph {
     LocalizedDistanceFormatter(distanceMeasurementSystemOverride = AppConfig.distanceMeasurementSystem())
   }
 
-  val ferrostarCore: FerrostarCore by lazy {
-    // Read per request, so spoken distances ("in 500 metres") follow the units setting.
-    val options = {
-      mapOf(
-          "language" to AppConfig.instructionLanguage(),
-          "units" to if (AppConfig.usesMetricUnits) "kilometers" else "miles",
-      )
-    }
-    // Valhalla, avoiding roads that live traffic reports as closed.
-    val routeProvider =
-        TrafficAwareRouteProvider(
-            endpoint = AppConfig.valhallaUrl,
-            profile = AppConfig.VALHALLA_COSTING,
-            baseOptions = options,
-            httpClient = httpClient.toOkHttpClientProvider(),
-            closures = { traffic.closures() },
-        )
+  /** The roads-to-avoid setting, kept current by [syncSettings] for route requests. */
+  @Volatile private var routeAvoidance = RouteAvoidance()
 
+  /** Valhalla, avoiding roads that live traffic reports as closed. */
+  private val routeProvider: TrafficAwareRouteProvider by lazy {
+    TrafficAwareRouteProvider(
+        endpoint = AppConfig.valhallaUrl,
+        profile = AppConfig.VALHALLA_COSTING,
+        // Read per request, so spoken distances ("in 500 metres") and roads to avoid follow the
+        // settings.
+        baseOptions = { alternates ->
+          valhallaOptions(
+              language = AppConfig.instructionLanguage(),
+              metric = AppConfig.usesMetricUnits,
+              avoid = routeAvoidance,
+              alternates = alternates,
+          )
+        },
+        httpClient = httpClient.toOkHttpClientProvider(),
+        closures = { traffic.closures() },
+    )
+  }
+
+  val ferrostarCore: FerrostarCore by lazy {
     FerrostarCore(
             routeProvider,
             httpClient = httpClient.toOkHttpClientProvider(),
@@ -185,6 +203,8 @@ object AppGraph {
         ferrostarCore,
         locationProvider,
         recentDestinations,
+        planRoutes = { origin, waypoints -> routeProvider.getRoutes(origin, waypoints, alternates = 2) },
+        trafficEventsOnRoute = { route -> traffic.eventsOnRoute(route.map { LatLng(it.lat, it.lng) }).size },
         isSpeaking = { ttsObserver.tts?.isSpeaking == true },
         isOnline = { network.isOnline },
     )

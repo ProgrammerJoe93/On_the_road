@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.joegineered.ontheroad.nav.RouteAvoidance
 import com.joegineered.ontheroad.offline.OfflineArea
 import com.joegineered.ontheroad.offline.OfflineAreaKind
 import com.joegineered.ontheroad.offline.OfflineAreaState
@@ -121,6 +122,7 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
   val turnInstructions by settings.turnInstructionsSpoken.collectAsState(initial = true)
   val speechRate by settings.speechRate.collectAsState(initial = SpeechRate.NORMAL)
   val units by settings.unitSystem.collectAsState(initial = UnitSystem.AUTO)
+  val avoid by settings.routeAvoidance.collectAsState(initial = RouteAvoidance())
   val camerasEnabled by settings.cameraWarningsEnabled.collectAsState(initial = false)
   val liveTraffic by settings.liveTrafficEnabled.collectAsState(initial = true)
   val showChargers by settings.showChargers.collectAsState(initial = true)
@@ -221,6 +223,24 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
   ) {
     scope.launch { settings.setUnitSystem(it) }
   }
+
+  HorizontalDivider(Modifier.padding(top = 8.dp))
+  SectionHeader(stringResource(R.string.settings_section_routes))
+  SwitchRow(title = stringResource(R.string.avoid_tolls), checked = avoid.tolls) {
+    scope.launch { settings.setRouteAvoidance(avoid.copy(tolls = it)) }
+  }
+  SwitchRow(title = stringResource(R.string.avoid_motorways), checked = avoid.motorways) {
+    scope.launch { settings.setRouteAvoidance(avoid.copy(motorways = it)) }
+  }
+  SwitchRow(title = stringResource(R.string.avoid_ferries), checked = avoid.ferries) {
+    scope.launch { settings.setRouteAvoidance(avoid.copy(ferries = it)) }
+  }
+  Text(
+      stringResource(R.string.avoid_hint),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+  )
 
   if (BuildConfig.DEBUG) {
     HorizontalDivider(Modifier.padding(top = 8.dp))

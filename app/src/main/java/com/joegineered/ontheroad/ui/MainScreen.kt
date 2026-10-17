@@ -7,23 +7,22 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +41,8 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.layout
@@ -54,6 +55,7 @@ import com.stadiamaps.ferrostar.composeui.config.withInstructionsView
 import com.stadiamaps.ferrostar.composeui.views.components.InstructionsView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -86,7 +88,9 @@ import com.stadiamaps.ferrostar.maplibreui.runtime.rememberNavigationMapState
 import com.stadiamaps.ferrostar.maplibreui.views.DynamicallyOrientingNavigationView
 import java.util.Locale
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import uniffi.ferrostar.GeographicCoordinate
@@ -100,6 +104,7 @@ fun signageStyle(): SignageStyle =
     if (Locale.getDefault().country in setOf("US", "CA")) SignageStyle.MUTCD
     else SignageStyle.ViennaConvention
 
+@OptIn(FlowPreview::class)
 @Composable
 fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel) {
   KeepScreenOnDisposableEffect()
@@ -130,6 +135,65 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
   // Bottom-left corner of the turn banner (root coordinates), to place the road signs below it.
   val bannerAnchor = remember { mutableStateOf<Offset?>(null) }
   val plugTypes by AppGraph.settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
+  val preview by viewModel.preview.collectAsState()
+  // The map between the search bar and the cards (root coordinates), where routes are framed.
+  var searchBottom by remember { mutableStateOf(0.dp) }
+  var cardsTop by remember { mutableStateOf(0.dp) }
+  val landscape = isLandscape()
+  // Frames all the routes offered, clear of the search bar, map buttons and cards. Waits for the
+  // card listing the routes to settle, so the fit uses its final size.
+  val systemBars = WindowInsets.systemBars.asPaddingValues()
+  val density = LocalDensity.current
+  val window = LocalWindowInfo.current.containerSize
+  LaunchedEffect(preview?.options) {
+    val routes = preview?.options ?: return@LaunchedEffect
+    val points = routes.flatMap { it.route.geometry }.ifEmpty { return@LaunchedEffect }
+    snapshotFlow { searchBottom to cardsTop }
+        .debounce(150)
+        .distinctUntilChanged()
+        .collectLatest { (search, cards) ->
+          val (width, height) = with(density) { window.width.toDp() to window.height.toDp() }
+          val padding =
+              if (landscape) {
+                PaddingValues(
+                    start = LandscapePanelWidth + 32.dp,
+                    top = systemBars.calculateTopPadding() + 32.dp,
+                    end = 80.dp,
+                    bottom = systemBars.calculateBottomPadding() + 32.dp,
+                )
+              } else {
+                PaddingValues(
+                    start = 32.dp,
+                    top = search + 24.dp,
+                    end = 80.dp,
+                    bottom = (height - cards + 24.dp).coerceAtLeast(24.dp),
+                )
+              }
+          val fit =
+              fitBounds(
+                  south = points.minOf { it.lat },
+                  west = points.minOf { it.lng },
+                  north = points.maxOf { it.lat },
+                  east = points.maxOf { it.lng },
+                  widthDp =
+                      (width - padding.calculateLeftPadding(LayoutDirection.Ltr) -
+                              padding.calculateRightPadding(LayoutDirection.Ltr))
+                          .value
+                          .toDouble(),
+                  heightDp = (height - padding.calculateTopPadding() - padding.calculateBottomPadding()).value.toDouble(),
+              )
+          navigationMapState.cameraMode = NavigationCameraMode.FREE
+          navigationMapState.cameraState.animateTo(
+              finalPosition =
+                  CameraPosition(
+                      target = Position(longitude = fit.lng, latitude = fit.lat),
+                      zoom = fit.zoom,
+                      padding = padding,
+                  ),
+              duration = 1000.milliseconds,
+          )
+        }
+  }
   val metric = AppConfig.unitSystem.collectAsState().value.isMetric()
   val distanceFormatter =
       remember(metric) {
@@ -204,6 +268,8 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                         viewModel,
                         navigationMapState,
                         onOpenSettings = { settingsPage = SettingsPage.MAIN },
+                        onSearchBottomChanged = { searchBottom = it },
+                        onCardsTopChanged = { cardsTop = it },
                     )
                   }
                 },
@@ -218,6 +284,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
         ChargerLayer(chargers.filter { it.matches(plugTypes) }, onClick = AppGraph.chargers::select)
       }
       SpeedCameraLayer(cameras)
+      if (!uiState.isNavigating()) RoutePreviewLayer(preview, onSelect = viewModel::selectRoute)
       DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
       if (pickingOfflineArea && !uiState.isNavigating()) {
         // One pack per area: the day style's, as the night pack covers the same area.
@@ -320,8 +387,11 @@ private fun BrowsingOverlay(
     viewModel: OtrNavigationViewModel,
     navigationMapState: NavigationMapState,
     onOpenSettings: () -> Unit,
+    onSearchBottomChanged: (Dp) -> Unit,
+    onCardsTopChanged: (Dp) -> Unit,
 ) {
   val destination by viewModel.selectedDestination.collectAsState()
+  val preview by viewModel.preview.collectAsState()
   val arrival by viewModel.arrival.collectAsState()
   val routingStatus by viewModel.routingStatus.collectAsState()
   val location by viewModel.location.collectAsState()
@@ -334,6 +404,7 @@ private fun BrowsingOverlay(
   val here = location?.coordinates?.let { LatLng(it.lat, it.lng) }
   // Landscape: search and cards share a side panel on the left, leaving the map visible.
   val landscape = isLandscape()
+  val density = LocalDensity.current
   val panelWidth = if (landscape) Modifier.width(LandscapePanelWidth) else Modifier.fillMaxWidth()
 
   Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -342,7 +413,11 @@ private fun BrowsingOverlay(
           viewModel.selectDestination(Destination.from(place))
           scope.launch { navigationMapState.showDestination(place.lat, place.lng, landscape) }
         },
-        modifier = Modifier.align(Alignment.TopStart).padding(16.dp).then(panelWidth),
+        modifier =
+            Modifier.align(Alignment.TopStart)
+                .padding(16.dp)
+                .then(panelWidth)
+                .onGloballyPositioned { onSearchBottomChanged(with(density) { it.boundsInRoot().bottom.toDp() }) },
         maxListHeight = if (landscape) 200.dp else 320.dp,
         onActiveChanged = { searching = it },
         onChargersNearby = { showNearbyChargers = true },
@@ -375,6 +450,7 @@ private fun BrowsingOverlay(
         modifier =
             Modifier.align(Alignment.BottomStart)
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 96.dp)
+                .onGloballyPositioned { onCardsTopChanged(with(density) { it.boundsInRoot().top.toDp() }) }
                 .then(panelWidth)
                 .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -414,46 +490,15 @@ private fun BrowsingOverlay(
       }
 
       destination?.let { selected ->
-        Card(Modifier.fillMaxWidth()) {
-          Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                selected.label ?: stringResource(R.string.selected_destination),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                selected.subtitle
-                    ?: "%.5f, %.5f"
-                        .format(Locale.ROOT, selected.coordinate.lat, selected.coordinate.lng),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            when (val status = routingStatus) {
-              is RoutingStatus.Failed ->
-                  Text(
-                      stringResource(R.string.route_error, status.message),
-                      color = MaterialTheme.colorScheme.error,
-                  )
-              RoutingStatus.NoRoute ->
-                  Text(stringResource(R.string.no_route), color = MaterialTheme.colorScheme.error)
-              RoutingStatus.Offline ->
-                  Text(stringResource(R.string.route_offline), color = MaterialTheme.colorScheme.error)
-              else -> Unit
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-              Button(
-                  onClick = { viewModel.startSelectedDestination() },
-                  enabled = routingStatus != RoutingStatus.Loading && location != null,
-              ) {
-                if (routingStatus == RoutingStatus.Loading) {
-                  CircularProgressIndicator(Modifier.padding(end = 8.dp).size(20.dp), strokeWidth = 2.dp)
-                }
-                Text(stringResource(R.string.start_navigation))
-              }
-              OutlinedButton(onClick = { viewModel.clearDestination() }) {
-                Text(stringResource(R.string.cancel))
-              }
-            }
-          }
-        }
+        DestinationCard(
+            destination = selected,
+            preview = preview,
+            routingStatus = routingStatus,
+            hasLocation = location != null,
+            onSelectRoute = viewModel::selectRoute,
+            onStart = { viewModel.startSelectedDestination() },
+            onCancel = { viewModel.clearDestination() },
+        )
       }
     }
   }

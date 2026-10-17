@@ -137,8 +137,11 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
         .build()
   }
 
+  /** Previews routes to [place]; during a trip, goes straight there instead. */
   private fun navigateTo(place: Place) {
-    viewModel.startNavigation(Destination.from(place))
+    val destination = Destination.from(place)
+    if (viewModel.navigationUiState.value.isNavigating()) viewModel.startNavigation(destination)
+    else viewModel.selectDestination(destination)
     screenManager.pop()
   }
 }
