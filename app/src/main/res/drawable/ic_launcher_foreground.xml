@@ -1,11 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Navigation arrow -->
+    <!-- Road running to the horizon -->
+    <path android:pathData="M10,108 L52.6,58 L55.4,58 L98,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="58"
+                android:endX="0"
+                android:endY="108"
+                android:startColor="#6B7380"
+                android:endColor="#363B44" />
+        </aapt:attr>
+    </path>
+    <!-- Edge lines -->
+    <path
+        android:fillColor="#E8ECEF"
+        android:pathData="M14,108 L53,58.6 L53.2,58.6 L17,108 Z M94,108 L55,58.6 L54.8,58.6 L91,108 Z" />
+    <!-- Centre dashes, shrinking with distance -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L72,76 L54,66 L36,76 Z" />
+        android:pathData="M51.8,108 L53.3,93.7 L54.7,93.7 L56.2,108 Z M52.9,84.3 L53.5,78.8 L54.5,78.8 L55.1,84.3 Z M53.3,74.7 L53.6,71.9 L54.4,71.9 L54.7,74.7 Z M53.6,69.4 L53.75,67.6 L54.25,67.6 L54.4,69.4 Z" />
+    <!-- Destination pin on the horizon -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M54,58 C54,58 44,47.5 44,38 A10,10 0 1,1 64,38 C64,47.5 54,58 54,58 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,38 A4,4 0 1,1 58,38 A4,4 0 1,1 50,38 Z" />
 </vector>

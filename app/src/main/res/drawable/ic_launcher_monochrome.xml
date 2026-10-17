@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Themed icon: road with the centre dashes cut out, and the pin -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M24,90 L52.6,58 L55.4,58 L84,90 Z M52.6,90 L53.3,82 L54.7,82 L55.4,90 Z M53.1,77 L53.5,72 L54.5,72 L54.9,77 Z M53.5,68.5 L53.7,65.5 L54.3,65.5 L54.5,68.5 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,56 C54,56 44,45.5 44,36 A10,10 0 1,1 64,36 C64,45.5 54,56 54,56 Z M50,36 A4,4 0 1,0 58,36 A4,4 0 1,0 50,36 Z" />
+</vector>

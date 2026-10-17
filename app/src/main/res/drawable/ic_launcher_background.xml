@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Sky -->
+    <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="0"
+                android:endY="60"
+                android:startColor="#2F86D6"
+                android:endColor="#A9DBF5" />
+        </aapt:attr>
+    </path>
+    <!-- Distant hills -->
+    <path
+        android:fillColor="#56A84A"
+        android:pathData="M0,60 C14,54 26,55 40,58 C52,60 62,53 76,54 C88,55 98,58 108,57 L108,108 L0,108 Z" />
+    <!-- Fields -->
+    <path android:pathData="M0,62 C20,57 34,60 44,59 L64,59 C78,58 92,62 108,61 L108,108 L0,108 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="58"
+                android:endX="0"
+                android:endY="108"
+                android:startColor="#6CBF5F"
+                android:endColor="#2E8B3A" />
+        </aapt:attr>
+    </path>
+</vector>
