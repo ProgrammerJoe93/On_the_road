@@ -89,13 +89,7 @@ class TrafficController(
   fun closures(): List<TrafficEvent> = _events.value.filter { it.isClosure }
 
   /** Current events along [route], to compare routes before starting one. */
-  fun eventsOnRoute(route: List<LatLng>): List<TrafficEvent> {
-    val events = _events.value
-    if (events.isEmpty() || route.size < 2) return emptyList()
-    // Indexed rather than projected point by point, which is slow for long routes.
-    val line = PolylineIndex(route)
-    return events.filter { event -> event.lines.flatten().any { line.isNear(it, ON_ROUTE_METRES) } }
-  }
+  fun eventsOnRoute(route: List<LatLng>): List<TrafficEvent> = eventsNearRoute(route, _events.value)
 
   fun select(item: Any?) {
     _selected.value = item
@@ -199,7 +193,16 @@ class TrafficController(
     /** Below this share of free-flow speed, traffic counts as slow (Fintraffic's "slow" class). */
     const val SLOW_PERCENT = 75.0
     const val MIN_REROUTE_DISTANCE = 500.0
-    /** As in [TrafficAlertEngine]: an event this close to the route is on it. */
-    const val ON_ROUTE_METRES = 30.0
   }
+}
+
+/** As in [TrafficAlertEngine]: an event this close to the route is on it. */
+private const val ON_ROUTE_METRES = 30.0
+
+/** The [events] with any point within [ON_ROUTE_METRES] of [route]. */
+fun eventsNearRoute(route: List<LatLng>, events: List<TrafficEvent>): List<TrafficEvent> {
+  if (events.isEmpty() || route.size < 2) return emptyList()
+  // Indexed rather than projected point by point, which is slow for long routes.
+  val line = PolylineIndex(route)
+  return events.filter { event -> event.lines.flatten().any { line.isNear(it, ON_ROUTE_METRES) } }
 }

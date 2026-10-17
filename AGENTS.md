@@ -20,6 +20,11 @@ with Android Auto support, built on MapLibre Native (via maplibre-compose) and F
 - Unit tests run on the JVM with `unitTests.isReturnDefaultValues = true`, so `android.util.Log`
   is a no-op there. Keep logic testable by putting it in plain Kotlin functions (see
   `offline/OfflineAreas.kt`, `traffic/DigitrafficParser.kt`) rather than in Android classes.
+- Controllers are tested with `runTest`, passing `backgroundScope` as their scope (see
+  `RoadsideStopControllerTest`). `advanceUntilIdle()` doesn't run background work, so a test that
+  checks nothing happened would pass vacuously; use `advanceTimeBy(…)` and `runCurrent()`.
+- Ferrostar's state types (`NavigationState`, `TripState.Navigating`) can be built in JVM tests,
+  but anything that calls into its native core (`FerrostarCore`, `RouteAdapter`) can't run there.
 
 ### Running the app
 

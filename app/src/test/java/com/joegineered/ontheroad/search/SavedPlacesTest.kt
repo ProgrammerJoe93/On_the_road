@@ -1,5 +1,7 @@
 package com.joegineered.ontheroad.search
 
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import com.joegineered.ontheroad.search.SavedPlaceKind.FAVOURITE
 import com.joegineered.ontheroad.search.SavedPlaceKind.HOME
 import com.joegineered.ontheroad.search.SavedPlaceKind.WORK
@@ -61,5 +63,12 @@ class SavedPlacesTest {
     assertEquals(listOf(WORK, null), quick.map { it.kind })
     assertEquals(sauna, quick[1].place)
     assertNull(SavedPlaces.find(listOf(SavedPlace(WORK, office)), sauna))
+  }
+
+  @Test
+  fun `the same spot is within about 20 m, whatever its name`() {
+    assertTrue(house.isSameSpot(house.copy(title = "Home", lat = house.lat + 0.0001)))
+    assertFalse(house.isSameSpot(house.copy(lat = house.lat + 0.001))) // about 110 m north
+    assertFalse(house.isSameSpot(house.copy(lng = house.lng + 0.001))) // about 55 m east
   }
 }

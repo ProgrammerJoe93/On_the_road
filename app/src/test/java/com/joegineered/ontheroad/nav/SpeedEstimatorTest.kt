@@ -40,4 +40,14 @@ class SpeedEstimatorTest {
     assertEquals(10.0, estimator.update(north(10.0), 1_050, null)!!, 0.2) // 50 ms later
     assertEquals(10.0, estimator.update(north(500.0), 30_000, null)!!, 0.2) // 29 s gap
   }
+
+  @Test
+  fun `a new trip starts without a speed`() {
+    val estimator = SpeedEstimator(smoothing = 1.0)
+    estimator.update(north(0.0), 0, null)
+    estimator.update(north(20.0), 1_000, null)
+    estimator.reset()
+    // The first fix after a reset has nothing to compare against.
+    assertNull(estimator.update(north(1_000.0), 2_000, null))
+  }
 }

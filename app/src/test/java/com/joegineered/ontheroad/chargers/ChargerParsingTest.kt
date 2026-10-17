@@ -153,4 +153,10 @@ class ChargerParsingTest {
     assertTrue(chargingStationFromTags("node/1", here, mapOf("socket:gb_dc" to "2"))!!.isFast)
     assertFalse(chargingStationFromTags("node/2", here, mapOf("socket:gb_ac" to "2"))!!.isFast)
   }
+
+  @Test
+  fun `power shows without needless decimals`() {
+    assertEquals("150 kW", formatKw(150.0))
+    assertEquals("7.4 kW", formatKw(7.4))
+  }
 }

@@ -73,4 +73,13 @@ class CameraAlertEngineTest {
     assertEquals(2L, update.active!!.camera.id)
     assertNotNull(update.announce)
   }
+
+  @Test
+  fun `a new trip announces cameras again`() {
+    assertNotNull(engine.update(1600.0, 10.0).announce)
+    engine.reset()
+    assertNull(engine.update(1600.0, 10.0).active) // no cameras until the new route's are set
+    engine.setCameras(listOf(matched(1, 2000.0)))
+    assertNotNull(engine.update(1600.0, 10.0).announce)
+  }
 }

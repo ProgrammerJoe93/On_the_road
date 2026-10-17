@@ -95,6 +95,17 @@ data class RoutePreview(
     get() = options[selectedIndex]
 }
 
+/** What to tell the driver when routing failed with [e]. */
+fun routingFailureStatus(e: Exception, online: Boolean): RoutingStatus {
+  // Valhalla answers HTTP 400 ("NoRoute") when the destination can't be reached by car.
+  val noRoute = e.message?.contains("status code 400") == true
+  return when {
+    noRoute -> RoutingStatus.NoRoute
+    !online -> RoutingStatus.Offline
+    else -> RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
+  }
+}
+
 /** A trip to a new destination has started (not a reroute). */
 data class TripStart(val destinationName: String, val route: List<GeographicCoordinate>)
 
@@ -436,15 +447,7 @@ class OtrNavigationViewModel(
         .onFailure { Log.w(TAG, "Could not save recent destination", it) }
   }
 
-  private fun routingFailure(e: Exception): RoutingStatus {
-    // Valhalla answers HTTP 400 ("NoRoute") when the destination can't be reached by car.
-    val noRoute = e.message?.contains("status code 400") == true
-    return when {
-      noRoute -> RoutingStatus.NoRoute
-      !isOnline() -> RoutingStatus.Offline
-      else -> RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
-    }
-  }
+  private fun routingFailure(e: Exception): RoutingStatus = routingFailureStatus(e, isOnline())
 
   /**
    * Plans a new route to the current destination via the stops still ahead, e.g. around a newly

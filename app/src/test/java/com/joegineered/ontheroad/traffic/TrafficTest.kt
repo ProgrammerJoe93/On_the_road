@@ -177,4 +177,52 @@ class TrafficTest {
     assertNull(engine.roadworksAt(5_100.0))
     assertNull(engine.roadworksAt(7_100.0)) // only roadworks get the sign
   }
+
+  @Test
+  fun `events are active between their start and end`() {
+    val event = event("e", TrafficEventKind.OTHER, at(0.0)).copy(start = now.minusSeconds(60), end = now.plusSeconds(60))
+    assertTrue(event.isActive(now))
+    assertFalse(event.isActive(now.minusSeconds(120)))
+    assertFalse(event.isActive(now.plusSeconds(60))) // ends exactly now
+    assertTrue(event.copy(start = null, end = null).isActive(now))
+  }
+
+  @Test
+  fun `only stations gathering data are used`() {
+    val body =
+        """
+        {"type":"FeatureCollection","features":[
+          {"type":"Feature","geometry":{"type":"Point","coordinates":[24.9,60.2,0.0]},"properties":{"id":23001,"collectionStatus":"GATHERING"}},
+          {"type":"Feature","geometry":{"type":"Point","coordinates":[25.0,61.0]},"properties":{"id":23002,"collectionStatus":"REMOVED_TEMPORARILY"}},
+          {"type":"Feature","properties":{"id":23003,"collectionStatus":"GATHERING"}}
+        ]}
+        """
+    assertEquals(mapOf(23001 to LatLng(60.2, 24.9)), DigitrafficParser.parseStations(body))
+  }
+
+  @Test
+  fun `traffic events near a route are counted for comparing routes`() {
+    val route = northboundRoute(10_000)
+    val events =
+        listOf(
+            event("on", TrafficEventKind.ACCIDENT, at(5_000.0, east = 20.0)),
+            event("near the end", TrafficEventKind.ROADWORKS, at(9_000.0, east = 400.0), at(10_000.0, east = 10.0)),
+            event("off", TrafficEventKind.ACCIDENT, at(5_000.0, east = 200.0)),
+        )
+    assertEquals(listOf("on", "near the end"), eventsNearRoute(route, events).map { it.id })
+    assertTrue(eventsNearRoute(route.take(1), events).isEmpty())
+  }
+
+  @Test
+  fun `a new trip warns about events again`() {
+    val engine = TrafficAlertEngine()
+    val route = northboundRoute(10_000)
+    val matched = engine.match(route, listOf(event("crash", TrafficEventKind.ACCIDENT, at(3_000.0))))
+    engine.setEvents(matched)
+    assertNotNull(engine.update(2_000.0).announce)
+    engine.reset()
+    assertNull(engine.update(2_000.0).active)
+    engine.setEvents(matched)
+    assertNotNull(engine.update(2_000.0).announce)
+  }
 }

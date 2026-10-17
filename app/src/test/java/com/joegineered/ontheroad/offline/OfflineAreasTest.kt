@@ -127,4 +127,19 @@ class OfflineAreasTest {
     assertNull(OfflineMaps.decode("not json".toByteArray()))
     assertEquals(tiles, OfflineMaps.parseTileTemplate("""{"tilejson":"3.0.0","tiles":["$tiles"]}"""))
   }
+
+  @Test
+  fun `bounds grow by a distance on every side`() {
+    val box = Bounds(60.0, 24.0, 60.1, 24.2).expandedBy(1_000.0)
+    assertEquals(1_000.0, distanceMetres(LatLng(60.0, 24.1), LatLng(box.south, 24.1)), 5.0)
+    assertEquals(1_000.0, distanceMetres(LatLng(60.05, 24.2), LatLng(60.05, box.east)), 5.0)
+    assertEquals(1_000.0, distanceMetres(LatLng(60.05, 24.0), LatLng(60.05, box.west)), 5.0)
+  }
+
+  @Test
+  fun `areas bigger than a region are too large to download`() {
+    // Helsinki and around: fine. All of southern Finland: too many tiles.
+    assertFalse(OfflineMaps.isTooLarge(Bounds(60.1, 24.7, 60.3, 25.2)))
+    assertTrue(OfflineMaps.isTooLarge(Bounds(60.0, 21.0, 63.0, 30.0)))
+  }
 }
