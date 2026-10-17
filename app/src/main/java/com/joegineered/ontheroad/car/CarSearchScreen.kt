@@ -16,15 +16,17 @@ import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.nav.Destination
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.PlaceSearch
+import com.joegineered.ontheroad.search.QuickPlace
+import com.joegineered.ontheroad.search.SavedPlaceKind
 import com.joegineered.ontheroad.search.SearchState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
 /**
- * Destination search for Android Auto. Shows recent destinations until the driver types, then
- * search results. The car decides when typing is allowed (typically only when parked); recents can
- * be picked at any time.
+ * Destination search for Android Auto. Shows saved and recent places until the driver types, then
+ * search results. The car decides when typing is allowed (typically only when parked); saved and
+ * recent places can be picked at any time.
  */
 class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
   private val viewModel = AppGraph.navigationViewModel
@@ -35,12 +37,12 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
           scope = lifecycleScope,
           near = { viewModel.location.value?.coordinates?.let { it.lat to it.lng } },
           isOnline = { AppGraph.network.isOnline },
-          savedPlaces = { AppGraph.recentDestinations.places.first() },
+          savedPlaces = { AppGraph.quickPlaces.first().map { it.place } },
       )
 
   private var query = ""
   private var state: SearchState = SearchState.Idle
-  private var recents: List<Place> = emptyList()
+  private var quickPlaces: List<QuickPlace> = emptyList()
 
   private val maxItems: Int =
       carContext
@@ -54,9 +56,9 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
           invalidate()
         }
         .launchIn(lifecycleScope)
-    AppGraph.recentDestinations.places
+    AppGraph.quickPlaces
         .onEach {
-          recents = it
+          quickPlaces = it
           invalidate()
         }
         .launchIn(lifecycleScope)
@@ -84,18 +86,23 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
 
     val showingRecents = query.trim().length < 3
     return when {
-      showingRecents -> builder.setItemList(placeList(recents, R.drawable.ic_history)).build()
+      showingRecents ->
+          builder
+              .setItemList(
+                  placeList(quickPlaces.map { it.place }, ::iconFor, noItemsMessage = R.string.search_hint)
+              )
+              .build()
       state == SearchState.Loading -> builder.setLoading(true).build()
       state is SearchState.Results ->
           builder
-              .setItemList(placeList((state as SearchState.Results).places, R.drawable.ic_place))
+              .setItemList(placeList((state as SearchState.Results).places, { R.drawable.ic_place }))
               .build()
       state is SearchState.Offline ->
           builder
               .setItemList(
                   placeList(
                       (state as SearchState.Offline).places,
-                      R.drawable.ic_history,
+                      ::iconFor,
                       noItemsMessage = R.string.search_offline_no_matches,
                   )
               )
@@ -118,8 +125,21 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
     }
   }
 
-  private fun placeList(places: List<Place>, iconRes: Int, noItemsMessage: Int = R.string.no_results): ItemList {
-    val icon = CarIcon.Builder(IconCompat.createWithResource(carContext, iconRes)).build()
+  /** Home, work, a star for a favourite, or history for a recent place. */
+  private fun iconFor(place: Place): Int =
+      when (quickPlaces.firstOrNull { it.place == place }?.kind) {
+        SavedPlaceKind.HOME -> R.drawable.ic_home
+        SavedPlaceKind.WORK -> R.drawable.ic_work
+        SavedPlaceKind.FAVOURITE -> R.drawable.ic_star
+        null -> R.drawable.ic_history
+      }
+
+  private fun placeList(
+      places: List<Place>,
+      iconRes: (Place) -> Int,
+      noItemsMessage: Int = R.string.no_results,
+  ): ItemList {
+    fun icon(place: Place) = CarIcon.Builder(IconCompat.createWithResource(carContext, iconRes(place))).build()
     return ItemList.Builder()
         .setNoItemsMessage(carContext.getString(noItemsMessage))
         .apply {
@@ -128,7 +148,7 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
                 Row.Builder()
                     .setTitle(place.title)
                     .apply { place.subtitle?.let { addText(it) } }
-                    .setImage(icon)
+                    .setImage(icon(place))
                     .setOnClickListener { navigateTo(place) }
                     .build()
             )

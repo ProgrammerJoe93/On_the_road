@@ -42,11 +42,13 @@ import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.PlaceSearch
+import com.joegineered.ontheroad.search.QuickPlace
+import com.joegineered.ontheroad.search.SavedPlaceKind
 import com.joegineered.ontheroad.search.SearchState
 import kotlinx.coroutines.flow.first
 
 /**
- * A search bar for addresses and places. While focused, it lists recent destinations (empty
+ * A search bar for addresses and places. While focused, it lists saved and recent places (empty
  * query) or search results; picking one calls [onPlaceSelected].
  */
 @Composable
@@ -65,11 +67,11 @@ fun SearchPanel(
         scope = scope,
         near = { viewModel.location.value?.coordinates?.let { it.lat to it.lng } },
         isOnline = { AppGraph.network.isOnline },
-        savedPlaces = { AppGraph.recentDestinations.places.first() },
+        savedPlaces = { AppGraph.quickPlaces.first().map { it.place } },
     )
   }
   val state by search.state.collectAsState()
-  val recents by AppGraph.recentDestinations.places.collectAsState(initial = emptyList())
+  val quickPlaces by AppGraph.quickPlaces.collectAsState(initial = emptyList())
   var query by remember { mutableStateOf("") }
   var focused by remember { mutableStateOf(false) }
   val focusManager = LocalFocusManager.current
@@ -158,22 +160,25 @@ fun SearchPanel(
         }
       }
       when {
-        showingRecents && recents.isNotEmpty() -> {
-          SectionLabel(stringResource(R.string.recent_destinations))
-          PlaceList(recents, R.drawable.ic_history, ::choose, maxListHeight, showDivider = false)
-        }
+        showingRecents && quickPlaces.isNotEmpty() -> QuickPlaceList(quickPlaces, ::choose, maxListHeight)
         showingRecents -> Unit
         state is SearchState.Results -> {
           val places = (state as SearchState.Results).places
           if (places.isEmpty()) Message(stringResource(R.string.no_results))
-          else PlaceList(places, R.drawable.ic_place, ::choose, maxListHeight)
+          else PlaceList(places, { R.drawable.ic_place }, ::choose, maxListHeight)
         }
         state is SearchState.Offline -> {
           val places = (state as SearchState.Offline).places
           if (places.isEmpty()) Message(stringResource(R.string.search_offline_no_matches))
           else {
             SectionLabel(stringResource(R.string.search_offline))
-            PlaceList(places, R.drawable.ic_history, ::choose, maxListHeight, showDivider = false)
+            PlaceList(
+                places,
+                { place -> quickPlaces.firstOrNull { it.place == place }.icon() },
+                ::choose,
+                maxListHeight,
+                showDivider = false,
+            )
           }
         }
         state is SearchState.Failed ->
@@ -189,44 +194,73 @@ fun SearchPanel(
 @Composable
 private fun PlaceList(
     places: List<Place>,
-    iconRes: Int,
+    iconRes: (Place) -> Int,
     onClick: (Place) -> Unit,
     maxHeight: Dp,
     showDivider: Boolean = true,
 ) {
   if (showDivider) HorizontalDivider()
   LazyColumn(Modifier.heightIn(max = maxHeight)) {
-    items(places, key = { "${it.lat},${it.lng},${it.title}" }) { place ->
-      Row(
-          modifier =
-              Modifier.fillMaxWidth()
-                  .clickable { onClick(place) }
-                  .padding(horizontal = 16.dp, vertical = 10.dp),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(16.dp),
-      ) {
-        Icon(
-            painterResource(iconRes),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    items(places, key = { it.key() }) { place -> PlaceRow(place, iconRes(place), onClick) }
+  }
+}
+
+/** Saved places, then recent ones, each under its heading, in one scrolling list. */
+@Composable
+private fun QuickPlaceList(places: List<QuickPlace>, onClick: (Place) -> Unit, maxHeight: Dp) {
+  val (saved, recent) = places.partition { it.kind != null }
+  val savedLabel = stringResource(R.string.saved_places_section)
+  val recentLabel = stringResource(R.string.recent_destinations)
+  LazyColumn(Modifier.heightIn(max = maxHeight)) {
+    listOf(savedLabel to saved, recentLabel to recent).forEach { (label, section) ->
+      if (section.isEmpty()) return@forEach
+      item(key = label) { SectionLabel(label) }
+      items(section, key = { "${it.kind}:${it.place.key()}" }) { PlaceRow(it.place, it.icon(), onClick) }
+    }
+  }
+}
+
+private fun Place.key() = "$lat,$lng,$title"
+
+/** The icon for a listed place: home, work, star for a favourite, or history for a recent one. */
+private fun QuickPlace?.icon(): Int =
+    when (this?.kind) {
+      SavedPlaceKind.HOME -> R.drawable.ic_home
+      SavedPlaceKind.WORK -> R.drawable.ic_work
+      SavedPlaceKind.FAVOURITE -> R.drawable.ic_star
+      null -> R.drawable.ic_history
+    }
+
+@Composable
+private fun PlaceRow(place: Place, iconRes: Int, onClick: (Place) -> Unit) {
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .clickable { onClick(place) }
+              .padding(horizontal = 16.dp, vertical = 10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(16.dp),
+  ) {
+    Icon(
+        painterResource(iconRes),
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Column {
+      Text(
+          place.title,
+          style = MaterialTheme.typography.bodyLarge,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+      place.subtitle?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Column {
-          Text(
-              place.title,
-              style = MaterialTheme.typography.bodyLarge,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis,
-          )
-          place.subtitle?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-          }
-        }
       }
     }
   }
@@ -234,13 +268,15 @@ private fun PlaceList(
 
 @Composable
 private fun SectionLabel(text: String) {
-  HorizontalDivider()
-  Text(
-      text,
-      style = MaterialTheme.typography.labelMedium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      modifier = Modifier.padding(start = 16.dp, top = 8.dp),
-  )
+  Column {
+    HorizontalDivider()
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+    )
+  }
 }
 
 @Composable

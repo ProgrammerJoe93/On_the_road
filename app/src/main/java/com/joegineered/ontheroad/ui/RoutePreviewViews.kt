@@ -3,6 +3,7 @@ package com.joegineered.ontheroad.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +15,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -22,10 +28,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -38,7 +48,8 @@ import com.joegineered.ontheroad.nav.RouteAvoidance
 import com.joegineered.ontheroad.nav.RouteOption
 import com.joegineered.ontheroad.nav.RoutePreview
 import com.joegineered.ontheroad.nav.RoutingStatus
-import java.util.Locale
+import com.joegineered.ontheroad.search.SavedPlaceKind
+import com.joegineered.ontheroad.search.SavedPlaces
 import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.exp
@@ -64,15 +75,19 @@ fun DestinationCard(
 ) {
   Card(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(
-          destination.label ?: stringResource(R.string.selected_destination),
-          style = MaterialTheme.typography.titleMedium,
-      )
-      Text(
-          destination.subtitle
-              ?: "%.5f, %.5f".format(Locale.ROOT, destination.coordinate.lat, destination.coordinate.lng),
-          style = MaterialTheme.typography.bodySmall,
-      )
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text(
+              destination.label ?: stringResource(R.string.selected_destination),
+              style = MaterialTheme.typography.titleMedium,
+          )
+          Text(
+              destination.subtitle ?: destination.coordinateText(),
+              style = MaterialTheme.typography.bodySmall,
+          )
+        }
+        SavePlaceButton(destination)
+      }
       preview?.takeIf { it.destination == destination }?.let { routes ->
         routes.options.forEachIndexed { index, option ->
           RouteOptionRow(option, selected = index == routes.selectedIndex, onClick = { onSelectRoute(index) })
@@ -138,6 +153,58 @@ private fun RouteOptionRow(option: RouteOption, selected: Boolean, onClick: () -
             pluralStringResource(R.plurals.route_traffic_events, option.trafficEvents, option.trafficEvents),
             style = MaterialTheme.typography.bodySmall,
             color = colors.error,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * A star that saves the destination as home, work or a favourite, or removes it; filled when the
+ * place is saved.
+ */
+@Composable
+private fun SavePlaceButton(destination: Destination) {
+  val savedPlaces = AppGraph.savedPlaces
+  val scope = rememberCoroutineScope()
+  val saved by savedPlaces.places.collectAsState(initial = emptyList())
+  val place = destination.toPlace()
+  val entry = SavedPlaces.find(saved, place)
+  var open by remember { mutableStateOf(false) }
+
+  fun act(change: suspend () -> Unit) {
+    open = false
+    scope.launch { change() }
+  }
+
+  Box {
+    IconButton(onClick = { open = true }) {
+      Icon(
+          painterResource(if (entry != null) R.drawable.ic_star else R.drawable.ic_star_border),
+          contentDescription = stringResource(R.string.save_place),
+          tint = if (entry != null) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+      )
+    }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+      listOf(
+              Triple(SavedPlaceKind.HOME, R.string.save_as_home, R.drawable.ic_home),
+              Triple(SavedPlaceKind.WORK, R.string.save_as_work, R.drawable.ic_work),
+              Triple(SavedPlaceKind.FAVOURITE, R.string.save_as_favourite, R.drawable.ic_star),
+          )
+          .filter { (kind) -> kind != entry?.kind }
+          .forEach { (kind, label, icon) ->
+            DropdownMenuItem(
+                text = { Text(stringResource(label)) },
+                leadingIcon = { Icon(painterResource(icon), contentDescription = null) },
+                // Keep the saved name: a saved home is shown as "Home", not by its address.
+                onClick = { act { savedPlaces.save(kind, entry?.place ?: place) } },
+            )
+          }
+      if (entry != null) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.remove_saved_place)) },
+            leadingIcon = { Icon(painterResource(R.drawable.ic_delete), contentDescription = null) },
+            onClick = { act { savedPlaces.remove(place) } },
         )
       }
     }

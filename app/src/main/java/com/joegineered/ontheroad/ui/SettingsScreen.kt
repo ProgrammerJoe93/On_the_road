@@ -29,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -44,12 +45,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.BuildConfig
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.chargers.SocketType
+import com.joegineered.ontheroad.search.SavedPlace
+import com.joegineered.ontheroad.search.SavedPlaceKind
 import com.joegineered.ontheroad.settings.SpeechRate
 import com.joegineered.ontheroad.settings.ThemeMode
 import com.joegineered.ontheroad.settings.UnitSystem
@@ -60,6 +66,7 @@ enum class SettingsPage {
   MAIN,
   CHARGERS,
   OFFLINE_MAPS,
+  SAVED_PLACES,
 }
 
 /**
@@ -86,6 +93,7 @@ fun SettingsScreen(
                         SettingsPage.MAIN -> R.string.settings_menu
                         SettingsPage.CHARGERS -> R.string.ev_chargers
                         SettingsPage.OFFLINE_MAPS -> R.string.offline_maps
+                        SettingsPage.SAVED_PLACES -> R.string.saved_places
                       }
                   )
               )
@@ -104,16 +112,22 @@ fun SettingsScreen(
             MainSettings(
                 onOpenChargers = { onNavigate(SettingsPage.CHARGERS) },
                 onOpenOfflineMaps = { onNavigate(SettingsPage.OFFLINE_MAPS) },
+                onOpenSavedPlaces = { onNavigate(SettingsPage.SAVED_PLACES) },
             )
         SettingsPage.CHARGERS -> ChargerSettings()
         SettingsPage.OFFLINE_MAPS -> OfflineMapSettings(onPickOfflineArea)
+        SettingsPage.SAVED_PLACES -> SavedPlaceSettings()
       }
     }
   }
 }
 
 @Composable
-private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Unit) {
+private fun MainSettings(
+    onOpenChargers: () -> Unit,
+    onOpenOfflineMaps: () -> Unit,
+    onOpenSavedPlaces: () -> Unit,
+) {
   val viewModel = AppGraph.navigationViewModel
   val settings = AppGraph.settings
   val scope = rememberCoroutineScope()
@@ -129,6 +143,7 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
   val plugTypes by settings.chargerPlugTypes.collectAsState(initial = SocketType.entries.toSet())
   val simulated by viewModel.simulated.collectAsState()
   val offlineAreas by AppGraph.offlineMaps.areas.collectAsState()
+  val savedPlaces by AppGraph.savedPlaces.places.collectAsState(initial = emptyList())
   val context = LocalContext.current
 
   SectionHeader(stringResource(R.string.settings_section_map))
@@ -169,6 +184,13 @@ private fun MainSettings(onOpenChargers: () -> Unit, onOpenOfflineMaps: () -> Un
 
   HorizontalDivider(Modifier.padding(top = 8.dp))
   SectionHeader(stringResource(R.string.settings_section_navigation))
+  NavigationRow(
+      title = stringResource(R.string.saved_places),
+      summary =
+          if (savedPlaces.isEmpty()) stringResource(R.string.saved_places_none)
+          else pluralStringResource(R.plurals.saved_places_summary, savedPlaces.size, savedPlaces.size),
+      onClick = onOpenSavedPlaces,
+  )
   SwitchRow(
       title = stringResource(R.string.voice_guidance),
       summary = stringResource(R.string.voice_guidance_summary),
@@ -297,6 +319,96 @@ private fun ChargerSettings() {
       color = MaterialTheme.colorScheme.onSurfaceVariant,
       modifier = Modifier.padding(16.dp),
   )
+}
+
+/** Saved places, to rename favourites or remove places. Places are saved from the map. */
+@Composable
+private fun SavedPlaceSettings() {
+  val savedPlaces = AppGraph.savedPlaces
+  val scope = rememberCoroutineScope()
+  val saved by savedPlaces.places.collectAsState(initial = emptyList())
+  val homeTitle = stringResource(R.string.saved_home)
+  val workTitle = stringResource(R.string.saved_work)
+  var renaming by remember { mutableStateOf<SavedPlace?>(null) }
+
+  if (saved.isEmpty()) {
+    Text(
+        stringResource(R.string.saved_places_none),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+  }
+  saved.forEach { entry ->
+    val place = entry.display(homeTitle, workTitle)
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Icon(
+          painterResource(
+              when (entry.kind) {
+                SavedPlaceKind.HOME -> R.drawable.ic_home
+                SavedPlaceKind.WORK -> R.drawable.ic_work
+                SavedPlaceKind.FAVOURITE -> R.drawable.ic_star
+              }
+          ),
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.padding(end = 16.dp),
+      )
+      SettingText(place.title, place.subtitle, Modifier.weight(1f))
+      // Home and work are named by their role; favourites by the name the driver chooses.
+      if (entry.kind == SavedPlaceKind.FAVOURITE) {
+        IconButton(onClick = { renaming = entry }) {
+          Icon(painterResource(R.drawable.ic_edit), stringResource(R.string.rename))
+        }
+      }
+      IconButton(onClick = { scope.launch { savedPlaces.remove(entry.place) } }) {
+        Icon(painterResource(R.drawable.ic_delete), stringResource(R.string.remove))
+      }
+    }
+  }
+  Text(
+      stringResource(R.string.saved_places_hint),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = Modifier.padding(16.dp),
+  )
+
+  renaming?.let { entry ->
+    // Selected, so typing replaces the old name.
+    var name by
+        remember(entry) {
+          mutableStateOf(TextFieldValue(entry.place.title, TextRange(0, entry.place.title.length)))
+        }
+    AlertDialog(
+        onDismissRequest = { renaming = null },
+        title = { Text(stringResource(R.string.rename_place)) },
+        text = {
+          OutlinedTextField(
+              value = name,
+              onValueChange = { name = it },
+              label = { Text(stringResource(R.string.place_name)) },
+              singleLine = true,
+          )
+        },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                scope.launch { savedPlaces.rename(entry.place, name.text) }
+                renaming = null
+              },
+              enabled = name.text.isNotBlank(),
+          ) {
+            Text(stringResource(R.string.rename))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { renaming = null }) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+  }
 }
 
 @Composable

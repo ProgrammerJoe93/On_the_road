@@ -46,8 +46,10 @@ data class Destination(
     val label: String? = null,
     val subtitle: String? = null,
 ) {
-  fun toPlace(fallbackTitle: String) =
-      Place(label ?: fallbackTitle, subtitle, coordinate.lat, coordinate.lng)
+  /** The destination as a place to remember; an unnamed point is titled by its coordinates. */
+  fun toPlace() = Place(label ?: coordinateText(), subtitle, coordinate.lat, coordinate.lng)
+
+  fun coordinateText() = "%.5f, %.5f".format(Locale.ROOT, coordinate.lat, coordinate.lng)
 
   companion object {
     fun from(place: Place) =
@@ -358,7 +360,7 @@ class OtrNavigationViewModel(
     _selectedDestination.value = null
     _preview.value = null
     _routingStatus.value = RoutingStatus.Idle
-    val place = destination.toPlace(destination.coordinateText())
+    val place = destination.toPlace()
     if (newTrip) _tripStarts.tryEmit(TripStart(place.title, route.geometry))
     // Remembering the destination is best-effort; it must not fail an active session.
     runCatching { recentDestinations.add(place) }
@@ -395,9 +397,6 @@ class OtrNavigationViewModel(
   }
 
   private fun Destination.toWaypoint() = Waypoint(coordinate = coordinate, kind = WaypointKind.BREAK)
-
-  private fun Destination.coordinateText() =
-      "%.5f, %.5f".format(Locale.ROOT, coordinate.lat, coordinate.lng)
 
   private companion object {
     const val TAG = "OtrNavigationViewModel"

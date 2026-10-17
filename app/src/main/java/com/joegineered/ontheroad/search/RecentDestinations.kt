@@ -34,8 +34,5 @@ class RecentDestinations(private val context: Context, private val maxEntries: I
     /** Puts [place] first, dropping any earlier entry for the same spot (within ~20 m). */
     fun addTo(existing: List<Place>, place: Place, maxEntries: Int): List<Place> =
         (listOf(place) + existing.filterNot { it.isSameSpot(place) }).take(maxEntries)
-
-    private fun Place.isSameSpot(other: Place) =
-        kotlin.math.abs(lat - other.lat) < 0.0002 && kotlin.math.abs(lng - other.lng) < 0.0004
   }
 }

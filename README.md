@@ -9,6 +9,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
 - **Routing:** car routes from [Valhalla](https://github.com/valhalla/valhalla), with instructions in the device language.
 - **Route choice:** up to three routes to each destination, compared by time, distance, main road
   and (in Finland) traffic events on them; avoid tolls, motorways or ferries.
+- **Saved places:** home, work and named favourites, listed first in search on the phone and in
+  the car.
 - **Turn-by-turn navigation:**
   - lane guidance and a speed-limit sign;
   - spoken instructions, with a choice of speech rate, or warnings only;
@@ -30,7 +32,7 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - the map along each route is saved when navigation starts (the last 3 routes);
   - saved areas update on Wi-Fi when OpenFreeMap publishes new map data;
   - speed cameras, chargers and recently viewed map areas come from the cache when offline;
-  - search falls back to recent destinations;
+  - search falls back to saved places and recent destinations;
   - routing still needs a connection.
 - **Android Auto:**
   - the MapLibre map on the car screen;
@@ -122,7 +124,7 @@ app/src/main/java/com/joegineered/ontheroad/
   cameras/             speed cameras: Overpass client and cache, route matching, alert engine
   chargers/            EV chargers from OpenStreetMap, fetched per map tile
   traffic/             live traffic for Finland from Digitraffic
-  search/              Photon address search and recent destinations
+  search/              Photon address search, saved places and recent destinations
   offline/             offline map areas and route corridors (MapLibre offline packs)
   net/                 connectivity monitoring
   night/               day/night switching from the sun's position

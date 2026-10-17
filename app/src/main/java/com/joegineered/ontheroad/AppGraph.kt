@@ -27,13 +27,18 @@ import com.joegineered.ontheroad.net.NetworkMonitor
 import com.joegineered.ontheroad.night.NightModeController
 import com.joegineered.ontheroad.offline.OfflineMaps
 import com.joegineered.ontheroad.search.PhotonGeocoder
+import com.joegineered.ontheroad.search.QuickPlace
 import com.joegineered.ontheroad.search.RecentDestinations
+import com.joegineered.ontheroad.search.SavedPlaces
+import com.joegineered.ontheroad.search.quickPlaces
 import com.joegineered.ontheroad.settings.SettingsRepository
 import com.joegineered.ontheroad.voice.NavigationVoice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectIndexed
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -256,6 +261,20 @@ object AppGraph {
   }
 
   val recentDestinations: RecentDestinations by lazy { RecentDestinations(appContext) }
+
+  val savedPlaces: SavedPlaces by lazy { SavedPlaces(appContext) }
+
+  /** Saved, then recent places, listed before typing a search and searched offline. */
+  val quickPlaces: Flow<List<QuickPlace>> by lazy {
+    combine(savedPlaces.places, recentDestinations.places) { saved, recents ->
+      quickPlaces(
+          saved,
+          recents,
+          appContext.getString(R.string.saved_home),
+          appContext.getString(R.string.saved_work),
+      )
+    }
+  }
 
   /**
    * Starts location updates if permission has been granted. The phone UI asks for permission; the
