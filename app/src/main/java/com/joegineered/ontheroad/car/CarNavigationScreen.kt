@@ -65,7 +65,6 @@ import com.joegineered.ontheroad.ui.speedReading
 import com.joegineered.ontheroad.ui.formatDistance
 import com.joegineered.ontheroad.ui.signageStyle
 import com.rallista.car.app.compose.ComposableScreen
-import com.stadiamaps.ferrostar.car.app.intent.NavigationDestination
 import com.stadiamaps.ferrostar.car.app.navigation.TurnByTurnNotificationManager
 import com.stadiamaps.ferrostar.car.app.template.NavigationTemplateBuilder
 import com.stadiamaps.ferrostar.composeui.config.VisualNavigationViewConfig
@@ -89,7 +88,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import uniffi.ferrostar.DrivingSide
-import uniffi.ferrostar.GeographicCoordinate
 
 /**
  * The Android Auto navigation screen. Renders the MapLibre map on the car surface and shows
@@ -97,10 +95,7 @@ import uniffi.ferrostar.GeographicCoordinate
  * maneuver, distance to it, lanes, ETA) to the car, which is what cars with cluster or HUD support
  * display.
  */
-class CarNavigationScreen(
-    carContext: CarContext,
-    private val initialDestination: NavigationDestination? = null,
-) : ComposableScreen(carContext) {
+class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext) {
 
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
   private val viewModel = AppGraph.navigationViewModel
@@ -155,15 +150,6 @@ class CarNavigationScreen(
     viewModel.routingStatus.onEach { invalidate() }.launchIn(scope)
     carContext.onBackPressedDispatcher.addCallback(this, cancelPreview)
     AppGraph.settings.themeMode.onEach { themeMode = it }.launchIn(scope)
-
-    initialDestination?.location?.let { location ->
-      viewModel.startNavigation(
-          Destination(
-              GeographicCoordinate(location.latitude, location.longitude),
-              initialDestination.displayName,
-          )
-      )
-    }
 
     lifecycle.addObserver(
         object : DefaultLifecycleObserver {

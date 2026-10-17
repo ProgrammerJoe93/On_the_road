@@ -26,9 +26,10 @@ import kotlinx.coroutines.flow.onEach
 /**
  * Destination search for Android Auto. Shows saved and recent places until the driver types, then
  * search results. The car decides when typing is allowed (typically only when parked); saved and
- * recent places can be picked at any time.
+ * recent places can be picked at any time. [initialQuery] starts a search straight away, e.g. for a
+ * place named to the car's assistant.
  */
-class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
+class CarSearchScreen(carContext: CarContext, initialQuery: String = "") : Screen(carContext) {
   private val viewModel = AppGraph.navigationViewModel
 
   private val search =
@@ -40,7 +41,7 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
           savedPlaces = { AppGraph.quickPlaces.first().map { it.place } },
       )
 
-  private var query = ""
+  private var query = initialQuery
   private var state: SearchState = SearchState.Idle
   private var quickPlaces: List<QuickPlace> = emptyList()
 
@@ -62,6 +63,7 @@ class CarSearchScreen(carContext: CarContext) : Screen(carContext) {
           invalidate()
         }
         .launchIn(lifecycleScope)
+    if (query.isNotBlank()) search.onQueryChanged(query)
   }
 
   override fun onGetTemplate(): Template {

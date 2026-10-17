@@ -42,6 +42,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
 - **Android Auto:**
   - the MapLibre map on the car screen;
   - Ferrostar's `NavigationTemplate`;
+  - voice destinations from the car's assistant ("navigate to …"): a place with coordinates starts
+    the trip, and a spoken name or address opens search results to pick from;
   - trip updates (`updateTrip`) that let supported cars show the next turn in the cluster or HUD.
 
 ## Build
@@ -100,7 +102,7 @@ To test Android Auto with the Desktop Head Unit (DHU):
    ~/Android/Sdk/extras/google/auto/desktop-head-unit
    ```
 4. The app appears in the DHU launcher.
-   - Start navigation from the phone, or with a `geo:` intent.
+   - Start navigation from the phone, or with a `geo:` intent (`geo:0,0?q=<place>` searches).
    - In the car, *auto drive* enables the simulated drive.
 
 The DHU can also emulate an instrument cluster: see its `--config` options and the configuration

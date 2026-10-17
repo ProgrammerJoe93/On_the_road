@@ -51,4 +51,29 @@ class DestinationIntentsTest {
     assertNull(parse("google.navigation", "q="))
     assertNull(parse("geo", null))
   }
+
+  @Test
+  fun `links with coordinates drive there, labelled by the query`() {
+    val request = parse("geo", "60.17,24.94?q=Home")!!.toRequest() as DestinationRequest.Go
+    assertEquals(60.17, request.destination.coordinate.lat, 1e-9)
+    assertEquals(24.94, request.destination.coordinate.lng, 1e-9)
+    assertEquals("Home", request.destination.label)
+  }
+
+  @Test
+  fun `spoken places without coordinates become a search`() {
+    assertEquals(
+        DestinationRequest.Search("Kamppi Helsinki"),
+        parse("geo", "0,0?q=Kamppi%20Helsinki")!!.toRequest(),
+    )
+    assertEquals(
+        DestinationRequest.Search("Mannerheimintie 1, Helsinki"),
+        parse("google.navigation", "q=Mannerheimintie%201,%20Helsinki")!!.toRequest(),
+    )
+  }
+
+  @Test
+  fun `links with neither coordinates nor a query are ignored`() {
+    assertNull(parse("geo", "0,0")?.toRequest())
+  }
 }
