@@ -37,9 +37,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import org.maplibre.compose.util.MaplibreComposable
+import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -412,6 +415,12 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
   }
 }
 
+/**
+ * The highest the cards reach in portrait: below the search bar (about 80 dp) and the two map
+ * buttons (108 dp), with gaps.
+ */
+private val CardsTopPortrait = 220.dp
+
 /** From the banner's bottom to the stops button: past Ferrostar's two buttons (56 dp + gap). */
 private val StopsButtonGap = 160.dp
 
@@ -453,8 +462,14 @@ private fun BrowsingOverlay(
   val landscape = isLandscape()
   val density = LocalDensity.current
   val panelWidth = if (landscape) Modifier.width(LandscapePanelWidth) else Modifier.fillMaxWidth()
+  // Where the search bar ends and the cards begin, in this box, to keep the map buttons between
+  // them (portrait); and the sizes of the box and the buttons.
+  var searchBottomPx by remember { mutableStateOf(0) }
+  var cardsTopPx by remember { mutableStateOf(Int.MAX_VALUE) }
+  var boxHeightPx by remember { mutableStateOf(0) }
+  var buttonsHeightPx by remember { mutableStateOf(0) }
 
-  Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+  Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().onSizeChanged { boxHeightPx = it.height }) {
     SearchPanel(
         onPlaceSelected = { place ->
           if (addingStop && destination != null) {
@@ -468,9 +483,14 @@ private fun BrowsingOverlay(
         },
         modifier =
             Modifier.align(Alignment.TopStart)
+                // Its results list drops down over the cards.
+                .zIndex(1f)
                 .padding(16.dp)
                 .then(panelWidth)
-                .onGloballyPositioned { onSearchBottomChanged(with(density) { it.boundsInRoot().bottom.toDp() }) },
+                .onGloballyPositioned {
+                  searchBottomPx = it.boundsInParent().bottom.toInt()
+                  onSearchBottomChanged(with(density) { it.boundsInRoot().bottom.toDp() })
+                },
         maxListHeight = if (landscape) 200.dp else 320.dp,
         onActiveChanged = {
           searching = it
@@ -481,9 +501,21 @@ private fun BrowsingOverlay(
         hint = stringResource(if (addingStop) R.string.search_stop_hint else R.string.search_hint),
     )
 
-    // Hidden while searching so they don't cover the results list.
+    // Hidden while searching so they don't cover the results list. Mid-height on the right, or
+    // just above the cards when they reach higher (portrait; landscape cards stay on the left).
     if (!searching) Column(
-        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
+        modifier =
+            Modifier.align(Alignment.TopEnd)
+                .padding(end = 16.dp)
+                .onSizeChanged { buttonsHeightPx = it.height }
+                .offset {
+                  val gap = 16.dp.roundToPx()
+                  val centred = (boxHeightPx - buttonsHeightPx) / 2
+                  val y =
+                      if (landscape) centred
+                      else centred.coerceAtMost(cardsTopPx - gap - buttonsHeightPx).coerceAtLeast(searchBottomPx + gap)
+                  IntOffset(0, y)
+                },
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       NavigationUIButton(onClick = onOpenSettings, buttonSize = DpSize(48.dp, 48.dp)) {
@@ -503,12 +535,16 @@ private fun BrowsingOverlay(
       }
     }
 
-    // Kept below the search bar and scrollable, so stacked cards never run off a short screen.
+    // Kept below the search bar and scrollable, so stacked cards never run off a short screen. In
+    // portrait they also leave room for the map buttons under the search bar.
     Column(
         modifier =
             Modifier.align(Alignment.BottomStart)
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 96.dp)
-                .onGloballyPositioned { onCardsTopChanged(with(density) { it.boundsInRoot().top.toDp() }) }
+                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = if (landscape) 96.dp else CardsTopPortrait)
+                .onGloballyPositioned {
+                  cardsTopPx = it.boundsInParent().top.toInt()
+                  onCardsTopChanged(with(density) { it.boundsInRoot().top.toDp() })
+                }
                 .then(panelWidth)
                 .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
