@@ -2,6 +2,7 @@ package com.joegineered.ontheroad.traffic
 
 import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.cameras.MeasuredPolyline
+import com.joegineered.ontheroad.cameras.PolylineIndex
 
 /**
  * A traffic event on the route: where the route reaches it ([alongRouteMetres]) and leaves it
@@ -25,47 +26,76 @@ class TrafficAlertEngine(
     private val maxOffsetMetres: Double = 30.0,
     private val warningDistanceMetres: Double = 2_000.0,
     private val closureWarningDistanceMetres: Double = 5_000.0,
+    /** Road weather sections have coarse, rounded coordinates, so they get more slack. */
+    private val roadWeatherOffsetMetres: Double = 100.0,
 ) {
   private var events: List<RouteTrafficEvent> = emptyList()
+  /** Road weather stretches that continue one already warned about, so need no new warning. */
+  private var continuations: Set<String> = emptySet()
   private val announced = mutableSetOf<String>()
 
   /** Events whose affected road runs along the route, ordered by where the route meets them. */
   fun match(route: List<LatLng>, candidates: List<TrafficEvent>): List<RouteTrafficEvent> {
     val line = MeasuredPolyline(route)
+    val index = PolylineIndex(route)
     return candidates
         .mapNotNull { event ->
+          val maxOffset = if (event.isRoadWeather) roadWeatherOffsetMetres else maxOffsetMetres
           val onRoute =
               event.lines.flatten()
-                  .mapNotNull { point -> line.project(point)?.takeIf { it.offsetMetres <= maxOffsetMetres } }
+                  .filter { index.isNear(it, maxOffset) } // cheap check before projecting
+                  .mapNotNull { point -> line.project(point)?.takeIf { it.offsetMetres <= maxOffset } }
                   .map { it.alongMetres }
           if (onRoute.isEmpty()) return@mapNotNull null
-          RouteTrafficEvent(event, onRoute.min(), onRoute.max())
+          val matched = RouteTrafficEvent(event, onRoute.min(), onRoute.max())
+          // A route that only crosses a road with poor conditions doesn't drive along it.
+          if (event.isRoadWeather && matched.endAlongRouteMetres - matched.alongRouteMetres < MIN_ROAD_WEATHER_METRES) {
+            return@mapNotNull null
+          }
+          matched
         }
         .sortedBy { it.alongRouteMetres }
   }
 
   fun setEvents(events: List<RouteTrafficEvent>) {
     this.events = events
+    // Road weather comes in back-to-back sections; warn when conditions start or get worse.
+    val continuing = mutableSetOf<String>()
+    var previous: RouteTrafficEvent? = null
+    for (event in events.filter { it.event.isRoadWeather }) {
+      val last = previous
+      if (
+          last != null &&
+              event.alongRouteMetres <= last.endAlongRouteMetres + ROAD_WEATHER_GAP_METRES &&
+              event.event.severity <= last.event.severity
+      ) {
+        continuing += event.event.id
+      }
+      if (last == null || event.endAlongRouteMetres > last.endAlongRouteMetres) previous = event
+    }
+    continuations = continuing
   }
 
   fun reset() {
     events = emptyList()
+    continuations = emptySet()
     announced.clear()
   }
 
   /** The roadwork stretch the driver is currently in, if any (with a little slack at each end). */
   fun roadworksAt(alongRouteMetres: Double): TrafficEvent? =
+      events.firstOrNull { it.event.kind == TrafficEventKind.ROADWORKS && it.contains(alongRouteMetres) }?.event
+
+  /** The worst road weather where the driver is now, if conditions are poor. */
+  fun roadWeatherAt(alongRouteMetres: Double): TrafficEvent? =
       events
-          .firstOrNull {
-            it.event.kind == TrafficEventKind.ROADWORKS &&
-                alongRouteMetres in
-                    (it.alongRouteMetres - INSIDE_MARGIN_METRES)..(it.endAlongRouteMetres + INSIDE_MARGIN_METRES)
-          }
+          .filter { it.event.isRoadWeather && it.contains(alongRouteMetres) }
+          .maxByOrNull { it.event.severity }
           ?.event
 
   fun update(alongRouteMetres: Double): TrafficAlertUpdate {
     val next =
-        events.firstOrNull { it.alongRouteMetres >= alongRouteMetres }
+        events.firstOrNull { it.alongRouteMetres >= alongRouteMetres && it.event.id !in continuations }
             ?: return TrafficAlertUpdate(null, null)
     val distance = next.alongRouteMetres - alongRouteMetres
     val window = if (next.event.isClosure) closureWarningDistanceMetres else warningDistanceMetres
@@ -75,7 +105,15 @@ class TrafficAlertEngine(
     return TrafficAlertUpdate(warning, if (isNew) warning else null)
   }
 
+  private fun RouteTrafficEvent.contains(alongRouteMetres: Double) =
+      alongRouteMetres in (this.alongRouteMetres - INSIDE_MARGIN_METRES)..(endAlongRouteMetres + INSIDE_MARGIN_METRES)
+
+  private val TrafficEvent.severity: Int
+    get() = if (kind == TrafficEventKind.VERY_POOR_CONDITIONS) 2 else 1
+
   private companion object {
     const val INSIDE_MARGIN_METRES = 50.0
+    const val MIN_ROAD_WEATHER_METRES = 300.0
+    const val ROAD_WEATHER_GAP_METRES = 1_000.0
   }
 }

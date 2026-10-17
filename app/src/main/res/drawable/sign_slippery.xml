@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Slippery road warning sign in the Finnish style (A15 "Liukas ajorata"): red-bordered yellow
+  triangle with a car and skid marks. Simplified pictogram.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="57dp" android:viewportWidth="64" android:viewportHeight="57">
+    <!-- White outer edge, red border, yellow field -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M32,0.5L63.5,56.5H0.5z" />
+    <path android:fillColor="#FFD32F2F" android:pathData="M32,3.5L60.7,54.5H3.3z" />
+    <path android:fillColor="#FFFFC400" android:pathData="M32,12L52.6,49.5H11.4z" />
+    <!-- Car from behind: body, roof and wheels -->
+    <path android:fillColor="#FF000000"
+        android:pathData="M25,29.5h14l2,5v4.5h-18v-4.5zM26.5,25.5h11l1.5,4h-14z" />
+    <path android:fillColor="#FF000000" android:pathData="M24,39h4v2.5h-4zM36,39h4v2.5h-4z" />
+    <!-- Skid marks -->
+    <path android:strokeColor="#FF000000" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M27,43c-3,1.5 1,3 -2,4.5M37,43c3,1.5 -1,3 2,4.5" />
+</vector>

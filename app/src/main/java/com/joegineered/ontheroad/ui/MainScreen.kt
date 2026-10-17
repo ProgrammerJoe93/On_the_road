@@ -215,7 +215,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
         baseStyle = BaseStyle.Uri(AppConfig.mapStyleUrl(night)),
         navigationMapState = navigationMapState,
         viewModel = viewModel,
-        // The speed limit sign is drawn by RoadSigns (with the roadworks sign beside it).
+        // The speed limit sign is drawn by RoadSigns (with roadworks and road weather signs beside it).
         config = VisualNavigationViewConfig.Default(),
         views =
             NavigationViewComponentBuilder.Default()
@@ -327,6 +327,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
   val trafficWarning by AppGraph.traffic.activeWarning.collectAsState()
   val selectedTraffic by AppGraph.traffic.selected.collectAsState()
   val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
+  val roadWeather by AppGraph.traffic.currentRoadWeather.collectAsState()
   val uiState by AppGraph.navigationViewModel.navigationUiState.collectAsState()
   val stopSearch by AppGraph.roadsideStops.state.collectAsState()
   val remainingStops by AppGraph.navigationViewModel.remainingStops.collectAsState()
@@ -340,6 +341,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
       RoadSigns(
           speedLimit = uiState.currentAnnotation?.speedLimit,
           roadworks = roadworks != null,
+          roadWeather = roadWeather,
           modifier =
               Modifier.offset {
                 val gap = 16.dp.roundToPx()

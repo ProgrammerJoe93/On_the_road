@@ -22,6 +22,11 @@ class DigitrafficClient(
 
   suspend fun stations(): String = get("/api/tms/v1/stations")
 
+  /** Main road sections that road weather forecasts are given for (static; about 240 kB). */
+  suspend fun roadWeatherSections(): String = get("/api/weather/v2/forecast-sections-simple")
+
+  suspend fun roadWeatherForecasts(): String = get("/api/weather/v2/forecast-sections-simple/forecasts")
+
   private suspend fun get(path: String): String =
       withContext(Dispatchers.IO) {
         val request =

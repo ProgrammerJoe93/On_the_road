@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for poor road weather: white snowflake on a blue warning triangle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp" android:height="28dp" android:viewportWidth="30" android:viewportHeight="28">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M15,0.5L29.5,26.5H0.5z" />
+    <path android:fillColor="#FF1E88E5" android:pathData="M15,4L26.4,24.5H3.6z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M15,11.5V22.5M10.2,14.25L19.8,19.75M10.2,19.75L19.8,14.25" />
+</vector>

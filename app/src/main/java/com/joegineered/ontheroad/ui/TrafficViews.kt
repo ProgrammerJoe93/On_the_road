@@ -58,6 +58,8 @@ val TrafficEventKind.color: Color
         TrafficEventKind.ACCIDENT, TrafficEventKind.ROAD_CLOSED -> Color(0xFFD32F2F)
         TrafficEventKind.CONGESTION -> Color(0xFFE65100)
         TrafficEventKind.ROADWORKS -> Color(0xFFF57C00)
+        TrafficEventKind.POOR_CONDITIONS -> Color(0xFF1E88E5)
+        TrafficEventKind.VERY_POOR_CONDITIONS -> Color(0xFF6A1B9A)
         TrafficEventKind.OTHER -> Color(0xFFFBC02D)
       }
 
@@ -108,7 +110,7 @@ fun TrafficLayer(
     )
   }
 
-  // Icons: closures, incidents, roadworks.
+  // Icons: closures, incidents, roadworks, road weather.
   val iconFor =
       mapOf(
           R.drawable.map_closure to events.filter { it.kind == TrafficEventKind.ROAD_CLOSED },
@@ -116,6 +118,7 @@ fun TrafficLayer(
               events.filter { it.kind == TrafficEventKind.ACCIDENT || it.kind == TrafficEventKind.CONGESTION },
           R.drawable.map_roadworks to
               events.filter { it.kind == TrafficEventKind.ROADWORKS || it.kind == TrafficEventKind.OTHER },
+          R.drawable.map_road_weather to events.filter { it.isRoadWeather },
       )
   iconFor.forEach { (iconRes, group) ->
     val points = group.mapNotNull { event -> event.anchor?.let { event to it } }

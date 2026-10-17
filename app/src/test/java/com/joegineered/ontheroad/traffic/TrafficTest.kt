@@ -225,4 +225,86 @@ class TrafficTest {
     engine.setEvents(matched)
     assertNotNull(engine.update(2_000.0).announce)
   }
+
+  // Shapes taken from Digitraffic's road weather responses (trimmed).
+  private val weatherSections =
+      """
+      {"type":"FeatureCollection","features":[
+        {"type":"Feature","id":"00001_001_000_0","geometry":{"type":"LineString","coordinates":[[24.944,60.167,0.0],[24.927,60.182,0.0],[24.916,60.19,0.0]]},
+         "properties":{"id":"00001_001_000_0","description":"Vt 1: Helsinki - Kehä III","roadSectionNumber":1,"roadNumber":1}},
+        {"type":"Feature","id":"00001_002_000_0","geometry":{"type":"LineString","coordinates":[[24.916,60.19,0.0],[24.913,60.191,0.0]]},
+         "properties":{"id":"00001_002_000_0","description":"Vt 1: Kehä III - Lohja"}},
+        {"type":"Feature","id":"00001_003_000_0","geometry":{"type":"LineString","coordinates":[[24.0,60.3,0.0],[23.9,60.4,0.0]]},
+         "properties":{"id":"00001_003_000_0"}}
+      ]}
+      """
+
+  private fun forecast(name: String, time: String, condition: String, road: String) =
+      """{"forecastName":"$name","time":"$time","type":"FORECAST","roadTemperature":-1.4,"temperature":0.5,
+         "overallRoadCondition":"$condition","roadCondition":"$road","weatherSymbol":101}"""
+
+  private val weatherForecasts =
+      """
+      {"dataUpdatedTime":"2026-10-16T21:48:47Z","forecastSections":[
+        {"id":"00001_001_000_0","forecasts":[
+          ${forecast("0h", "2026-10-16T20:00:00Z", "NORMAL_CONDITION", "DRY")},
+          ${forecast("2h", "2026-10-16T22:00:00Z", "POOR_CONDITION", "PARTLY_ICY")},
+          ${forecast("4h", "2026-10-17T00:00:00Z", "EXTREMELY_POOR_CONDITION", "ICE")}]},
+        {"id":"00001_002_000_0","forecasts":[
+          ${forecast("2h", "2026-10-16T22:00:00Z", "EXTREMELY_POOR_CONDITION", "WET")}]},
+        {"id":"00001_003_000_0","forecasts":[
+          ${forecast("2h", "2026-10-16T22:00:00Z", "NORMAL_CONDITION", "DRY")}]},
+        {"id":"unknown","forecasts":[
+          ${forecast("2h", "2026-10-16T22:00:00Z", "POOR_CONDITION", "SNOW")}]}
+      ]}
+      """
+
+  @Test
+  fun `road weather with poor conditions now becomes events`() {
+    val sections = DigitrafficParser.parseRoadWeatherSections(weatherSections)
+    assertEquals(3, sections.size)
+    // Filled in to a point every 250 m or so (the first section is about 2.7 km long).
+    assertTrue(sections.getValue("00001_001_000_0").lines.single().size > 10)
+
+    val events = DigitrafficParser.parseRoadWeather(weatherForecasts, sections, now).associateBy { it.id }
+
+    assertEquals(setOf("weather-00001_001_000_0", "weather-00001_002_000_0"), events.keys)
+    val icy = events.getValue("weather-00001_001_000_0")
+    assertEquals(TrafficEventKind.POOR_CONDITIONS, icy.kind) // the forecast nearest now, not the 4h one
+    assertEquals("Vt 1: Helsinki - Kehä III", icy.title)
+    assertEquals(listOf("Partly icy", "Road surface -1 °C"), icy.restrictions)
+    assertTrue(icy.slippery)
+    assertTrue(icy.isRoadWeather)
+    val wet = events.getValue("weather-00001_002_000_0")
+    assertEquals(TrafficEventKind.VERY_POOR_CONDITIONS, wet.kind)
+    assertFalse(wet.slippery)
+  }
+
+  @Test
+  fun `back-to-back road weather sections are warned about once, unless conditions worsen`() {
+    val engine = TrafficAlertEngine()
+    val route = northboundRoute(20_000)
+    val stretch = { from: Double, to: Double -> (from.toInt()..to.toInt() step 250).map { at(it.toDouble(), east = 60.0) } }
+    engine.setEvents(
+        engine.match(
+            route,
+            listOf(
+                event("poor 1", TrafficEventKind.POOR_CONDITIONS, *stretch(3_000.0, 6_000.0).toTypedArray()),
+                event("poor 2", TrafficEventKind.POOR_CONDITIONS, *stretch(6_000.0, 9_000.0).toTypedArray()),
+                event("very poor", TrafficEventKind.VERY_POOR_CONDITIONS, *stretch(9_000.0, 12_000.0).toTypedArray()),
+                // A road with poor conditions that the route only crosses.
+                event("crossing", TrafficEventKind.POOR_CONDITIONS, at(15_000.0, east = -500.0), at(15_000.0), at(15_000.0, east = 500.0)),
+            ),
+        )
+    )
+
+    assertEquals("poor 1", engine.update(2_000.0).announce?.event?.id)
+    assertNull(engine.roadWeatherAt(2_000.0))
+    assertEquals("poor 1", engine.roadWeatherAt(5_000.0)?.id)
+    // Past the first section's start, the next warning is for worse conditions, not "poor 2".
+    assertEquals("very poor", engine.update(7_500.0).announce?.event?.id)
+    assertEquals("very poor", engine.roadWeatherAt(9_000.0)?.id) // the worse of the two
+    assertNull(engine.update(14_000.0).active)
+    assertNull(engine.roadWeatherAt(15_000.0))
+  }
 }

@@ -38,6 +38,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - a chime, a spoken warning and an on-screen badge, plus a car alert in Android Auto.
 - **Live traffic (Finland):** from Fintraffic's open Digitraffic service:
   - accidents, closures and roadworks on the map, with Finnish details and English summaries;
+  - poor and very poor driving conditions on main roads, from Fintraffic's road weather
+    forecasts, with a slippery road (or general danger) sign while you drive through them;
   - slow traffic at measuring stations;
   - spoken warnings for events on your route;
   - routes avoid closed roads.

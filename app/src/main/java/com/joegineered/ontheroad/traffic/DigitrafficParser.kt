@@ -1,7 +1,9 @@
 package com.joegineered.ontheroad.traffic
 
 import com.joegineered.ontheroad.cameras.LatLng
+import com.joegineered.ontheroad.cameras.distanceMetres
 import java.time.Instant
+import kotlin.math.abs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -129,6 +131,74 @@ object DigitrafficParser {
     }.toMap()
   }
 
+  /**
+   * Road weather forecast sections (`/api/weather/v2/forecast-sections-simple`): main road
+   * stretches, tens of kilometres long, with sparse rounded coordinates. Lines are filled in to a
+   * point every [ROAD_WEATHER_SPACING_METRES] so that they can be matched to a route.
+   */
+  fun parseRoadWeatherSections(body: String): Map<String, RoadWeatherSection> {
+    val features = json.parseToJsonElement(body).jsonObject["features"] as? JsonArray ?: return emptyMap()
+    return features.mapNotNull { f ->
+      val obj = f as? JsonObject ?: return@mapNotNull null
+      val props = obj["properties"] as? JsonObject
+      val id = obj.string("id") ?: props?.string("id") ?: return@mapNotNull null
+      val lines = parseGeometry(obj["geometry"] as? JsonObject).filter { it.size >= 2 }.map(::densify)
+      if (lines.isEmpty()) return@mapNotNull null
+      id to RoadWeatherSection(id, props?.string("description"), lines)
+    }.toMap()
+  }
+
+  /**
+   * Sections with poor or very poor driving conditions now, from
+   * `/api/weather/v2/forecast-sections-simple/forecasts`. Each section has an observation and
+   * forecasts a few hours apart; the one nearest [now] is used.
+   */
+  fun parseRoadWeather(body: String, sections: Map<String, RoadWeatherSection>, now: Instant): List<TrafficEvent> {
+    val list = json.parseToJsonElement(body).jsonObject["forecastSections"] as? JsonArray ?: return emptyList()
+    return list.mapNotNull { element ->
+      val obj = element as? JsonObject ?: return@mapNotNull null
+      val section = obj.string("id")?.let { sections[it] } ?: return@mapNotNull null
+      val forecast =
+          (obj["forecasts"] as? JsonArray).orEmpty()
+              .mapNotNull { f -> (f as? JsonObject)?.let { it to (it.instant("time") ?: return@mapNotNull null) } }
+              .minByOrNull { (_, time) -> abs(time.epochSecond - now.epochSecond) }
+              ?.first ?: return@mapNotNull null
+      val kind =
+          when (forecast.string("overallRoadCondition")) {
+            "POOR_CONDITION" -> TrafficEventKind.POOR_CONDITIONS
+            "EXTREMELY_POOR_CONDITION" -> TrafficEventKind.VERY_POOR_CONDITIONS
+            else -> return@mapNotNull null
+          }
+      val roadCondition = forecast.string("roadCondition")
+      val roadTemperature = forecast["roadTemperature"]?.jsonPrimitive?.doubleOrNull
+      TrafficEvent(
+          id = "weather-${section.id}",
+          kind = kind,
+          // E.g. "Vt 1: Helsinki - Kehä III".
+          title = section.description?.trim().orEmpty(),
+          description = null,
+          lines = section.lines,
+          restrictions =
+              listOfNotNull(
+                  ROAD_CONDITION_LABELS[roadCondition],
+                  roadTemperature?.let { "Road surface ${Math.round(it)} °C" },
+              ),
+          start = null,
+          end = null,
+          slippery = roadCondition in SLIPPERY_CONDITIONS,
+      )
+    }
+  }
+
+  private fun densify(line: List<LatLng>): List<LatLng> =
+      line.zipWithNext().flatMap { (a, b) ->
+        val steps = (distanceMetres(a, b) / ROAD_WEATHER_SPACING_METRES).toInt().coerceAtLeast(1)
+        (0 until steps).map { i ->
+          val t = i.toDouble() / steps
+          LatLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lng))
+        }
+      } + line.last()
+
   private fun parseGeometry(geometry: JsonObject?): List<List<LatLng>> {
     geometry ?: return emptyList()
     val coordinates = geometry["coordinates"] ?: return emptyList()
@@ -207,4 +277,21 @@ object DigitrafficParser {
           "contra flow traffic" to "Contraflow",
       )
   private val QUANTIFIED = setOf("speed limit", "estimated delay")
+
+  private const val ROAD_WEATHER_SPACING_METRES = 250.0
+
+  /** English labels for road weather road conditions; dry and moist roads go unmentioned. */
+  private val ROAD_CONDITION_LABELS =
+      mapOf(
+          "WET" to "Wet road",
+          "SLUSH" to "Slushy road",
+          "FROST" to "Frost",
+          "PARTLY_ICY" to "Partly icy",
+          "ICE" to "Icy road",
+          "SNOW" to "Snowy road",
+      )
+  private val SLIPPERY_CONDITIONS = setOf("SLUSH", "FROST", "PARTLY_ICY", "ICE", "SNOW")
 }
+
+/** A main road stretch that Fintraffic gives road weather forecasts for. */
+data class RoadWeatherSection(val id: String, val description: String?, val lines: List<List<LatLng>>)

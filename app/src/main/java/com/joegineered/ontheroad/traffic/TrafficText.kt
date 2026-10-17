@@ -9,6 +9,8 @@ fun TrafficEventKind.labelRes(): Int =
       TrafficEventKind.ROAD_CLOSED -> R.string.traffic_road_closed
       TrafficEventKind.CONGESTION -> R.string.traffic_congestion
       TrafficEventKind.ROADWORKS -> R.string.traffic_roadworks
+      TrafficEventKind.POOR_CONDITIONS -> R.string.traffic_poor_conditions
+      TrafficEventKind.VERY_POOR_CONDITIONS -> R.string.traffic_very_poor_conditions
       TrafficEventKind.OTHER -> R.string.traffic_notice
     }
 
@@ -20,6 +22,8 @@ fun trafficAnnouncement(context: Context, warning: TrafficWarning): String =
           TrafficEventKind.ROAD_CLOSED -> R.string.voice_road_closed_ahead
           TrafficEventKind.CONGESTION -> R.string.voice_congestion_ahead
           TrafficEventKind.ROADWORKS -> R.string.voice_roadworks_ahead
+          TrafficEventKind.POOR_CONDITIONS -> R.string.voice_poor_conditions_ahead
+          TrafficEventKind.VERY_POOR_CONDITIONS -> R.string.voice_very_poor_conditions_ahead
           TrafficEventKind.OTHER -> R.string.voice_traffic_notice_ahead
         }
     )

@@ -32,9 +32,9 @@ import kotlinx.coroutines.launch
 import uniffi.ferrostar.TripState
 
 /**
- * Live traffic for Finland from Digitraffic: incidents, closures and roadworks for the map, slow
- * traffic at measuring stations, warnings for events on the route, and closures for routing to
- * avoid. Refreshes every few minutes while enabled.
+ * Live traffic for Finland from Digitraffic: incidents, closures, roadworks and poor road weather
+ * for the map, slow traffic at measuring stations, warnings for events on the route, and closures
+ * for routing to avoid. Refreshes every few minutes while enabled.
  */
 class TrafficController(
     private val client: DigitrafficClient,
@@ -44,7 +44,7 @@ class TrafficController(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
   private val _events = MutableStateFlow<List<TrafficEvent>>(emptyList())
-  /** Active incidents, closures and roadworks. */
+  /** Active incidents, closures, roadworks and road weather sections with poor conditions. */
   val events: StateFlow<List<TrafficEvent>> = _events.asStateFlow()
 
   private val _slowTraffic = MutableStateFlow<List<SlowTraffic>>(emptyList())
@@ -57,6 +57,10 @@ class TrafficController(
   private val _currentRoadworks = MutableStateFlow<TrafficEvent?>(null)
   /** The roadwork stretch the driver is in, for the roadworks sign next to the speed limit. */
   val currentRoadworks: StateFlow<TrafficEvent?> = _currentRoadworks.asStateFlow()
+
+  private val _currentRoadWeather = MutableStateFlow<TrafficEvent?>(null)
+  /** Poor road weather where the driver is, for a warning sign next to the speed limit. */
+  val currentRoadWeather: StateFlow<TrafficEvent?> = _currentRoadWeather.asStateFlow()
 
   private val _announcements = MutableSharedFlow<TrafficWarning>(extraBufferCapacity = 4)
   val announcements: SharedFlow<TrafficWarning> = _announcements.asSharedFlow()
@@ -73,6 +77,10 @@ class TrafficController(
   private var routeLength: Double? = null
   private var stations: Map<Int, LatLng> = emptyMap()
   private var stationsLoadedAt = Instant.EPOCH
+  private var weatherSections: Map<String, RoadWeatherSection> = emptyMap()
+  private var weatherSectionsLoadedAt = Instant.EPOCH
+  private var roadWeather: List<TrafficEvent> = emptyList()
+  private var roadWeatherLoadedAt = Instant.EPOCH
   private val reroutedFor = mutableSetOf<String>()
   private var started = false
 
@@ -88,8 +96,12 @@ class TrafficController(
   /** Active closures, for the route provider to avoid. Empty when live traffic is off. */
   fun closures(): List<TrafficEvent> = _events.value.filter { it.isClosure }
 
-  /** Current events along [route], to compare routes before starting one. */
-  fun eventsOnRoute(route: List<LatLng>): List<TrafficEvent> = eventsNearRoute(route, _events.value)
+  /**
+   * Current events along [route], to compare routes before starting one. Road weather is left
+   * out: it is similar on alternative routes, and would outnumber the incidents in winter.
+   */
+  fun eventsOnRoute(route: List<LatLng>): List<TrafficEvent> =
+      eventsNearRoute(route, _events.value.filterNot { it.isRoadWeather })
 
   fun select(item: Any?) {
     _selected.value = item
@@ -106,6 +118,8 @@ class TrafficController(
       if (!enabled) {
         _events.value = emptyList()
         _slowTraffic.value = emptyList()
+        roadWeather = emptyList()
+        roadWeatherLoadedAt = Instant.EPOCH
         return@collectLatest
       }
       while (true) {
@@ -130,9 +144,32 @@ class TrafficController(
       stationsLoadedAt = now
     }
     val slow = async { DigitrafficParser.parseSlowTraffic(client.stationData(), stations, SLOW_PERCENT) }
-    _events.value = announcements.await() + roadworks.await()
+    val weather = async { loadRoadWeather(now) }
+    // Road weather first, so that incidents are drawn above its long stretches.
+    _events.value = weather.await() + announcements.await() + roadworks.await()
     _slowTraffic.value = slow.await()
     Log.i(TAG, "${_events.value.size} traffic events, ${_slowTraffic.value.size} slow stations")
+  }
+
+  /**
+   * Road weather, refreshed less often than incidents: forecasts change about hourly. A failure
+   * keeps the last known conditions rather than losing the other traffic data.
+   */
+  private suspend fun loadRoadWeather(now: Instant): List<TrafficEvent> {
+    if (now.isBefore(roadWeatherLoadedAt.plusSeconds(ROAD_WEATHER_TTL.inWholeSeconds))) return roadWeather
+    try {
+      if (weatherSections.isEmpty() || now.isAfter(weatherSectionsLoadedAt.plusSeconds(STATIONS_TTL.inWholeSeconds))) {
+        weatherSections = DigitrafficParser.parseRoadWeatherSections(client.roadWeatherSections())
+        weatherSectionsLoadedAt = now
+      }
+      roadWeather = DigitrafficParser.parseRoadWeather(client.roadWeatherForecasts(), weatherSections, now)
+      roadWeatherLoadedAt = now
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Log.w(TAG, "Road weather refresh failed", e)
+    }
+    return roadWeather
   }
 
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -168,11 +205,13 @@ class TrafficController(
       if (along == null) {
         _activeWarning.value = null
         _currentRoadworks.value = null
+        _currentRoadWeather.value = null
         return@collect
       }
       val update = synchronized(engine) { engine.update(along) }
       _activeWarning.value = update.active
       _currentRoadworks.value = synchronized(engine) { engine.roadworksAt(along) }
+      _currentRoadWeather.value = synchronized(engine) { engine.roadWeatherAt(along) }
       update.announce?.let { warning ->
         announce(warning)
         _announcements.tryEmit(warning)
@@ -190,6 +229,7 @@ class TrafficController(
     const val TAG = "TrafficController"
     val REFRESH_INTERVAL = 5.minutes
     val STATIONS_TTL = 24.hours
+    val ROAD_WEATHER_TTL = 15.minutes
     /** Below this share of free-flow speed, traffic counts as slow (Fintraffic's "slow" class). */
     const val SLOW_PERCENT = 75.0
     const val MIN_REROUTE_DISTANCE = 500.0

@@ -8,12 +8,17 @@ enum class TrafficEventKind {
   ROAD_CLOSED,
   CONGESTION,
   ROADWORKS,
+  /** Fintraffic's road weather: poor driving conditions ("huono ajokeli"). */
+  POOR_CONDITIONS,
+  /** Very poor driving conditions ("erittäin huono ajokeli"). */
+  VERY_POOR_CONDITIONS,
   OTHER,
 }
 
 /**
- * A traffic announcement or roadwork from Fintraffic's Digitraffic service. Texts are Finnish,
- * as published; [kind] and [restrictions] are in English for the UI and voice.
+ * A traffic announcement, roadwork or stretch of poor road weather from Fintraffic's Digitraffic
+ * service. Texts are Finnish, as published; [kind] and [restrictions] are in English for the UI
+ * and voice.
  */
 data class TrafficEvent(
     val id: String,
@@ -28,9 +33,14 @@ data class TrafficEvent(
     val restrictions: List<String>,
     val start: Instant?,
     val end: Instant?,
+    /** Road weather only: the road is icy, snowy, slushy or frosty. */
+    val slippery: Boolean = false,
 ) {
   val isClosure: Boolean
     get() = kind == TrafficEventKind.ROAD_CLOSED
+
+  val isRoadWeather: Boolean
+    get() = kind == TrafficEventKind.POOR_CONDITIONS || kind == TrafficEventKind.VERY_POOR_CONDITIONS
 
   /** A point to place the icon: the middle of the affected stretch. */
   val anchor: LatLng?

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Other danger warning sign in the Finnish style (A33 "Muu vaara"): "!" on a yellow triangle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="57dp" android:viewportWidth="64" android:viewportHeight="57">
+    <!-- White outer edge, red border, yellow field -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M32,0.5L63.5,56.5H0.5z" />
+    <path android:fillColor="#FFD32F2F" android:pathData="M32,3.5L60.7,54.5H3.3z" />
+    <path android:fillColor="#FFFFC400" android:pathData="M32,12L52.6,49.5H11.4z" />
+    <path android:fillColor="#FF000000"
+        android:pathData="M30,22h4l-0.7,15h-2.6zM32,40a2.2,2.2 0,1 1,-0.001 0z" />
+</vector>

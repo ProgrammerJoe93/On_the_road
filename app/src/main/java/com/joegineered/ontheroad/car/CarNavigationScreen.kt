@@ -232,7 +232,7 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
           navigationMapState = mapState,
           navigationCameraOptions = cameraOptions,
           viewModel = viewModel,
-          // The speed limit sign is drawn below by RoadSigns, with the roadworks sign beside it.
+          // The speed limit sign is drawn below by RoadSigns, with roadworks and road weather signs beside it.
           config = VisualNavigationViewConfig.Default(),
           surfaceAreaTracker = surfaceAreaTracker,
       ) { _ ->
@@ -256,10 +256,12 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
         val speed by viewModel.speedMetresPerSecond.collectAsState()
         val metric = AppConfig.unitSystem.collectAsState().value.isMetric()
         val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
+        val roadWeather by AppGraph.traffic.currentRoadWeather.collectAsState()
         Box(Modifier.fillMaxSize().padding(normalPadding).padding(8.dp)) {
           RoadSigns(
               speedLimit = uiState?.currentAnnotation?.speedLimit,
               roadworks = roadworks != null,
+              roadWeather = roadWeather,
               modifier = Modifier.align(Alignment.TopStart),
           )
           Speedometer(
