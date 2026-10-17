@@ -190,6 +190,67 @@ object DigitrafficParser {
     }
   }
 
+  /**
+   * Variable signs (`/api/variable-sign/v1/signs`) as they show now. Blank warning and message
+   * signs, and signs reported as broken, are left out; blank speed limit signs are kept, as they
+   * end a variable limit.
+   */
+  fun parseVariableSigns(body: String): List<VariableSign> {
+    val features = json.parseToJsonElement(body).jsonObject["features"] as? JsonArray ?: return emptyList()
+    return features.mapNotNull { f ->
+      val obj = f as? JsonObject ?: return@mapNotNull null
+      val props = obj["properties"] as? JsonObject ?: return@mapNotNull null
+      if (props.string("reliability") == "MALFUNCTION") return@mapNotNull null
+      val position = parseGeometry(obj["geometry"] as? JsonObject).flatten().firstOrNull() ?: return@mapNotNull null
+      val type =
+          when (props.string("type")) {
+            "SPEEDLIMIT" -> VariableSignType.SPEED_LIMIT
+            "WARNING" -> VariableSignType.WARNING
+            "INFORMATION" -> VariableSignType.INFORMATION
+            else -> return@mapNotNull null
+          }
+      val value = props.string("displayValue")?.trim()?.takeIf { it.isNotEmpty() }
+      val screens =
+          (props["textRows"] as? JsonArray).orEmpty()
+              .mapNotNull { row ->
+                val r = row as? JsonObject ?: return@mapNotNull null
+                val text = r.string("text")?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                Triple(r["screen"]?.jsonPrimitive?.intOrNull ?: 1, r["rowNumber"]?.jsonPrimitive?.intOrNull ?: 0, text)
+              }
+              .groupBy { it.first }
+              .toSortedMap()
+              .values
+              .map { rows -> rows.sortedBy { it.second }.map { it.third } }
+      val sign =
+          VariableSign(
+              id = props.string("id") ?: return@mapNotNull null,
+              type = type,
+              position = position,
+              address = props.string("roadAddress")?.let(::parseRoadAddress),
+              direction =
+                  when (props.string("direction")) {
+                    "INCREASING" -> RoadDirection.INCREASING
+                    "DECREASING" -> RoadDirection.DECREASING
+                    else -> null
+                  },
+              speedLimitKmh = if (type == VariableSignType.SPEED_LIMIT) value?.toIntOrNull() else null,
+              warningCode = if (type != VariableSignType.SPEED_LIMIT) value else null,
+              screens = screens,
+          )
+      when {
+        type == VariableSignType.SPEED_LIMIT -> sign
+        sign.warningCode == null && sign.screens.isEmpty() -> null
+        else -> sign
+      }
+    }
+  }
+
+  /** "1 6 3577": road 1, part 6, 3577 m into the part. */
+  private fun parseRoadAddress(text: String): RoadAddress? {
+    val parts = text.trim().split(Regex("\\s+")).map { it.toIntOrNull() ?: return null }
+    return if (parts.size == 3) RoadAddress(parts[0], parts[1], parts[2]) else null
+  }
+
   private fun densify(line: List<LatLng>): List<LatLng> =
       line.zipWithNext().flatMap { (a, b) ->
         val steps = (distanceMetres(a, b) / ROAD_WEATHER_SPACING_METRES).toInt().coerceAtLeast(1)

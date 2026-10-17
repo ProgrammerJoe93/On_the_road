@@ -25,6 +25,7 @@ import com.joegineered.ontheroad.nav.valhallaOptions
 import com.joegineered.ontheroad.nav.TrafficAwareRouteProvider
 import com.joegineered.ontheroad.traffic.DigitrafficClient
 import com.joegineered.ontheroad.traffic.TrafficController
+import com.joegineered.ontheroad.traffic.VariableSignController
 import com.joegineered.ontheroad.traffic.trafficAnnouncement
 import com.joegineered.ontheroad.net.NetworkMonitor
 import com.joegineered.ontheroad.night.NightModeController
@@ -52,11 +53,13 @@ import com.stadiamaps.ferrostar.core.AndroidTtsObserver
 import com.stadiamaps.ferrostar.core.FerrostarCore
 import com.stadiamaps.ferrostar.core.http.OkHttpClientProvider.Companion.toOkHttpClientProvider
 import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
+import com.stadiamaps.ferrostar.core.measurement.MeasurementSpeedUnit
 import com.stadiamaps.ferrostar.core.location.SimulatedLocationProvider
 import com.stadiamaps.ferrostar.core.service.FerrostarForegroundServiceManager
 import com.stadiamaps.ferrostar.googleplayservices.FusedNavigationLocationProvider
 import com.stadiamaps.ferrostar.ui.formatters.LocalizedDistanceFormatter
 import java.time.Duration
+import kotlin.math.roundToInt
 import okhttp3.OkHttpClient
 import org.maplibre.compose.offline.getOfflineManager
 import uniffi.ferrostar.CourseFiltering
@@ -246,6 +249,19 @@ object AppGraph {
     )
   }
 
+  val variableSigns: VariableSignController by lazy {
+    VariableSignController(
+        client = DigitrafficClient(httpClient),
+        liveTrafficEnabled = settings.liveTrafficEnabled,
+        navigationState = ferrostarCore.state,
+        mappedSpeedLimitKmh = {
+          navigationViewModel.navigationUiState.value.currentAnnotation?.speedLimit
+              ?.value(MeasurementSpeedUnit.KilometersPerHour)
+              ?.roundToInt()
+        },
+    )
+  }
+
   private var trafficStarted = false
 
   /** Starts live traffic refreshes and rerouting around closures found on the active route. */
@@ -254,6 +270,7 @@ object AppGraph {
     if (trafficStarted) return
     trafficStarted = true
     traffic.start()
+    variableSigns.start()
     CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
       traffic.closureOnRoute.collect {
         voice.announce(appContext.getString(R.string.rerouting_closure))

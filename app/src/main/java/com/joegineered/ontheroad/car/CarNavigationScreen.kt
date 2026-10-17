@@ -18,6 +18,8 @@ import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +59,8 @@ import com.joegineered.ontheroad.ui.ChargerLayer
 import com.joegineered.ontheroad.ui.OfflineIndicator
 import com.joegineered.ontheroad.ui.TrafficLayer
 import com.joegineered.ontheroad.ui.RoadSigns
+import com.joegineered.ontheroad.ui.VariableMessageSign
+import com.joegineered.ontheroad.ui.effectiveSpeedLimit
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
 import com.joegineered.ontheroad.ui.StopPinsLayer
 import com.joegineered.ontheroad.ui.StopsLayer
@@ -257,20 +261,23 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
         val metric = AppConfig.unitSystem.collectAsState().value.isMetric()
         val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
         val roadWeather by AppGraph.traffic.currentRoadWeather.collectAsState()
+        val signs by AppGraph.variableSigns.state.collectAsState()
+        val speedLimit = effectiveSpeedLimit(uiState?.currentAnnotation?.speedLimit, signs.speedLimitKmh)
         Box(Modifier.fillMaxSize().padding(normalPadding).padding(8.dp)) {
-          RoadSigns(
-              speedLimit = uiState?.currentAnnotation?.speedLimit,
-              roadworks = roadworks != null,
-              roadWeather = roadWeather,
+          Column(
               modifier = Modifier.align(Alignment.TopStart),
-          )
+              verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            RoadSigns(
+                speedLimit = speedLimit,
+                roadworks = roadworks != null,
+                roadWeather = roadWeather,
+                warningCodes = signs.warningCodes,
+            )
+            signs.message?.let { VariableMessageSign(it) }
+          }
           Speedometer(
-              reading =
-                  speedReading(
-                      speed,
-                      uiState?.currentAnnotation?.speedLimit,
-                      metric,
-                  ),
+              reading = speedReading(speed, speedLimit, metric),
               metric = metric,
               modifier = Modifier.align(Alignment.BottomStart),
           )

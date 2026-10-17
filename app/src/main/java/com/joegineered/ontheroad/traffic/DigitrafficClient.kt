@@ -27,6 +27,9 @@ class DigitrafficClient(
 
   suspend fun roadWeatherForecasts(): String = get("/api/weather/v2/forecast-sections-simple/forecasts")
 
+  /** Variable speed limit, warning and message signs, as they show now (about 270 kB). */
+  suspend fun variableSigns(): String = get("/api/variable-sign/v1/signs")
+
   private suspend fun get(path: String): String =
       withContext(Dispatchers.IO) {
         val request =

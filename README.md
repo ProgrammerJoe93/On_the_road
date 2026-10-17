@@ -41,6 +41,9 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - poor and very poor driving conditions on main roads, from Fintraffic's road weather
     forecasts, with a slippery road (or general danger) sign while you drive through them;
   - slow traffic at measuring stations;
+  - variable road signs on your route, matched to your direction of travel: variable speed
+    limits replace the mapped limit, warning signs show beside it after you pass them, and
+    message signs show their text as you approach;
   - spoken warnings for events on your route;
   - routes avoid closed roads.
 - **Offline use:**

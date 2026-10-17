@@ -41,7 +41,7 @@
     <string name="retry">Retry</string>
     <string name="back">Back</string>
     <string name="live_traffic">Live traffic (Finland)</string>
-    <string name="live_traffic_summary">Incidents, roadworks, road weather and slow traffic from Fintraffic; routes avoid closed roads</string>
+    <string name="live_traffic_summary">Incidents, roadworks, road weather, slow traffic and variable road signs from Fintraffic; routes avoid closed roads</string>
     <string name="traffic_accident">Accident</string>
     <string name="traffic_road_closed">Road closed</string>
     <string name="traffic_congestion">Congestion</string>
@@ -60,6 +60,18 @@
     <string name="slow_traffic">Slow traffic</string>
     <string name="slow_traffic_direction">Direction %1$d: %2$d%% of normal speed (%3$d km/h)</string>
     <string name="traffic_until">Until %1$s</string>
+    <string name="warning_sign_congestion">Congestion</string>
+    <string name="warning_sign_uneven_road">Uneven road</string>
+    <string name="warning_sign_loose_gravel">Loose gravel</string>
+    <string name="warning_sign_slippery">Slippery road</string>
+    <string name="warning_sign_dangerous_shoulders">Dangerous road edge</string>
+    <string name="warning_sign_ski_track">Ski track</string>
+    <string name="warning_sign_elk">Elk</string>
+    <string name="warning_sign_reindeer">Reindeer</string>
+    <string name="warning_sign_traffic_lights">Traffic lights</string>
+    <string name="warning_sign_crosswind">Crosswind</string>
+    <string name="warning_sign_danger">Danger</string>
+    <string name="variable_sign_attribution">Road sign · Fintraffic</string>
     <string name="traffic_attribution">Source: Fintraffic / digitraffic.fi, CC BY 4.0</string>
     <string name="rerouting_closure">Road closed ahead. Finding a new route.</string>
     <string name="settings_section_map">Map</string>

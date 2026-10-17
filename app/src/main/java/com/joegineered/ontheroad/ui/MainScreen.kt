@@ -239,12 +239,13 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
                 .withProgressView { modifier, state, onTapExit ->
                   state.progress?.let { progress ->
                     val speed by viewModel.speedMetresPerSecond.collectAsState()
+                    val signs by AppGraph.variableSigns.state.collectAsState()
                     Column(modifier) {
                       Speedometer(
                           reading =
                               speedReading(
                                   speed,
-                                  state.currentAnnotation?.speedLimit,
+                                  effectiveSpeedLimit(state.currentAnnotation?.speedLimit, signs.speedLimitKmh),
                                   metric,
                               ),
                           metric = metric,
@@ -328,6 +329,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
   val selectedTraffic by AppGraph.traffic.selected.collectAsState()
   val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
   val roadWeather by AppGraph.traffic.currentRoadWeather.collectAsState()
+  val variableSigns by AppGraph.variableSigns.state.collectAsState()
   val uiState by AppGraph.navigationViewModel.navigationUiState.collectAsState()
   val stopSearch by AppGraph.roadsideStops.state.collectAsState()
   val remainingStops by AppGraph.navigationViewModel.remainingStops.collectAsState()
@@ -339,9 +341,10 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
     // Where Ferrostar would put its speed limit sign: under the banner, aligned with its edge.
     bannerAnchor?.let { anchor ->
       RoadSigns(
-          speedLimit = uiState.currentAnnotation?.speedLimit,
+          speedLimit = effectiveSpeedLimit(uiState.currentAnnotation?.speedLimit, variableSigns.speedLimitKmh),
           roadworks = roadworks != null,
           roadWeather = roadWeather,
+          warningCodes = variableSigns.warningCodes,
           modifier =
               Modifier.offset {
                 val gap = 16.dp.roundToPx()
@@ -363,6 +366,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
       PositionEstimatedIndicator()
       warning?.let { CameraWarningBadge(it) }
       trafficWarning?.let { TrafficWarningBadge(it) }
+      variableSigns.message?.let { VariableMessageSign(it) }
     }
 
     // Cards: above the trip progress bar in portrait; bottom of the right half in landscape,
