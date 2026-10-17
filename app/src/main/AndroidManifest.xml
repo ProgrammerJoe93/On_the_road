@@ -49,8 +49,14 @@
                 <data android:scheme="geo" />
                 <data android:scheme="google.navigation" />
             </intent-filter>
-            <!-- Assistant's navigation intents in Android Auto ("navigate to …", "add a stop at …").
-                 Android Auto finds them on this activity, and sends them to OtrCarSession. -->
+            <!-- Assistant's navigation intents ("navigate to …", "add a stop at …"), on the phone
+                 and in Android Auto. Android Auto finds its action on this activity, and sends it
+                 to OtrCarSession. -->
+            <intent-filter>
+                <action android:name="android.intent.action.NAVIGATE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="geo" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="androidx.car.app.action.NAVIGATE" />
                 <category android:name="android.intent.category.DEFAULT" />

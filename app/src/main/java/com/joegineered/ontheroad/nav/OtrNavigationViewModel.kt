@@ -147,6 +147,14 @@ class OtrNavigationViewModel(
   val preview: StateFlow<RoutePreview?> = _preview.asStateFlow()
   private var previewJob: Job? = null
 
+  private val _destinationPrompt = MutableStateFlow<DestinationRequest?>(null)
+  /**
+   * A destination request from another app waiting for the driver on the phone: a
+   * [DestinationRequest.Search] to pick a result from, or a [DestinationRequest.Go] to choose
+   * between replacing the trip and adding a stop. The car asks on its own screens instead.
+   */
+  val destinationPrompt: StateFlow<DestinationRequest?> = _destinationPrompt.asStateFlow()
+
   private val _simulated = MutableStateFlow(false)
   val simulated: StateFlow<Boolean> = _simulated.asStateFlow()
 
@@ -371,6 +379,41 @@ class OtrNavigationViewModel(
             _routingStatus.value = routingFailure(e)
           }
         }
+  }
+
+  /**
+   * Carries out [action] for [destination] (see [destinationOutcome]). Returns false, doing
+   * nothing, when the driver must first choose between replacing the trip and adding a stop.
+   */
+  fun goTo(destination: Destination, action: TripAction): Boolean {
+    val outcome =
+        destinationOutcome(
+            action = action,
+            navigating = navigationUiState.value.isNavigating(),
+            previewing = _selectedDestination.value != null,
+            hasLocation = _location.value != null,
+        )
+    when (outcome) {
+      DestinationOutcome.START -> startNavigation(destination)
+      DestinationOutcome.PREVIEW -> selectDestination(destination)
+      DestinationOutcome.ADD_TO_PREVIEW -> addStop(destination)
+      DestinationOutcome.ADD_TO_TRIP -> stopOnTheWay(destination)
+      DestinationOutcome.ASK -> return false
+    }
+    return true
+  }
+
+  /** Handles [request] on the phone, asking the driver through [destinationPrompt] if needed. */
+  fun handleDestinationRequest(request: DestinationRequest) {
+    _destinationPrompt.value =
+        when (request) {
+          is DestinationRequest.Go -> request.takeUnless { goTo(it.destination, it.action) }
+          is DestinationRequest.Search -> request
+        }
+  }
+
+  fun dismissDestinationPrompt() {
+    _destinationPrompt.value = null
   }
 
   fun setSimulated(simulated: Boolean) {

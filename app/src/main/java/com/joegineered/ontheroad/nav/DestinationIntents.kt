@@ -88,6 +88,18 @@ sealed interface DestinationRequest {
   ) : DestinationRequest
 }
 
+/**
+ * The request for a link that was opened rather than spoken: a plain "navigate" becomes
+ * [TripAction.DIRECTIONS], to look at the routes before starting.
+ */
+fun DestinationRequest.viewed(): DestinationRequest {
+  if (action != TripAction.NAVIGATE) return this
+  return when (this) {
+    is DestinationRequest.Go -> copy(action = TripAction.DIRECTIONS)
+    is DestinationRequest.Search -> copy(action = TripAction.DIRECTIONS)
+  }
+}
+
 /** Parses a `geo:` or `google.navigation:` intent into a [DestinationRequest]. */
 fun parseDestinationRequest(intent: Intent): DestinationRequest? {
   val uri = intent.data ?: return null

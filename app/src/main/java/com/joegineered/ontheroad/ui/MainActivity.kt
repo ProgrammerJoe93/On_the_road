@@ -15,8 +15,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.joegineered.ontheroad.AppGraph
-import com.joegineered.ontheroad.nav.parseDestinationIntent
-import uniffi.ferrostar.GeographicCoordinate
+import com.joegineered.ontheroad.nav.parseDestinationRequest
+import com.joegineered.ontheroad.nav.viewed
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +29,10 @@ class MainActivity : ComponentActivity() {
       val night by AppGraph.nightMode.isNight.collectAsState()
       LaunchedEffect(night) { applySystemBars(night) }
       MaterialTheme(colorScheme = if (night) darkColorScheme() else lightColorScheme()) {
-        Surface { MainScreen() }
+        Surface {
+          MainScreen()
+          DestinationPrompt()
+        }
       }
     }
   }
@@ -47,11 +50,15 @@ class MainActivity : ComponentActivity() {
     handleDestinationIntent(intent)
   }
 
-  /** Shows a destination shared as a geo: or google.navigation: link, ready to start. */
+  /**
+   * Handles a geo: or google.navigation: link. Assistant's "navigate to …" (ACTION_NAVIGATE) does
+   * what was asked; a link opened or shared from another app (ACTION_VIEW) shows the routes, or
+   * the matching places, to pick from first.
+   */
   private fun handleDestinationIntent(intent: Intent) {
-    val destination = parseDestinationIntent(intent) ?: return
-    val lat = destination.latitude ?: return
-    val lng = destination.longitude ?: return
-    AppGraph.navigationViewModel.selectDestination(GeographicCoordinate(lat, lng), destination.query)
+    val request = parseDestinationRequest(intent) ?: return
+    AppGraph.navigationViewModel.handleDestinationRequest(
+        if (intent.action == Intent.ACTION_VIEW) request.viewed() else request
+    )
   }
 }

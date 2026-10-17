@@ -117,4 +117,18 @@ class DestinationIntentsTest {
     // Before the first location fix, the preview waits for it rather than failing.
     assertEquals(DestinationOutcome.PREVIEW, idle(TripAction.NAVIGATE, hasLocation = false))
   }
+
+  @Test
+  fun `links opened from other apps show the routes first`() {
+    assertEquals(TripAction.DIRECTIONS, request("geo", "60.17,24.94")!!.viewed().action)
+    assertEquals(
+        DestinationRequest.Search("Kamppi", TripAction.DIRECTIONS),
+        request("geo", "0,0?q=Kamppi")!!.viewed(),
+    )
+    // An explicit request is kept.
+    assertEquals(
+        TripAction.ADD_STOP,
+        request("geo", "0,0?q=Kamppi&intent=add_a_stop")!!.viewed().action,
+    )
+  }
 }

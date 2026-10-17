@@ -9,9 +9,7 @@ import androidx.car.app.model.Template
 import com.joegineered.ontheroad.AppGraph
 import com.joegineered.ontheroad.R
 import com.joegineered.ontheroad.nav.Destination
-import com.joegineered.ontheroad.nav.DestinationOutcome
 import com.joegineered.ontheroad.nav.TripAction
-import com.joegineered.ontheroad.nav.destinationOutcome
 
 /**
  * Carries out [action] for [destination] in the car, from a voice request or a search result.
@@ -23,20 +21,8 @@ fun goToDestination(
     destination: Destination,
     action: TripAction = TripAction.NAVIGATE,
 ) {
-  val viewModel = AppGraph.navigationViewModel
-  val outcome =
-      destinationOutcome(
-          action = action,
-          navigating = viewModel.navigationUiState.value.isNavigating(),
-          previewing = viewModel.selectedDestination.value != null,
-          hasLocation = viewModel.location.value != null,
-      )
-  when (outcome) {
-    DestinationOutcome.START -> viewModel.startNavigation(destination)
-    DestinationOutcome.PREVIEW -> viewModel.selectDestination(destination)
-    DestinationOutcome.ADD_TO_PREVIEW -> viewModel.addStop(destination)
-    DestinationOutcome.ADD_TO_TRIP -> viewModel.stopOnTheWay(destination)
-    DestinationOutcome.ASK -> screenManager.push(CarTripChoiceScreen(carContext, destination))
+  if (!AppGraph.navigationViewModel.goTo(destination, action)) {
+    screenManager.push(CarTripChoiceScreen(carContext, destination))
   }
 }
 

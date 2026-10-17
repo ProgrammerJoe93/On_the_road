@@ -16,6 +16,10 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
 - **Stops on the way:** while navigating, find fuel, EV chargers, food or rest areas ahead on the
   route (from OpenStreetMap), sorted by distance ahead, and add one to the trip in route order.
   Picking a charger during a trip works the same way.
+- **Voice destinations:** Assistant's "navigate to …", "add a stop at …" and "directions to …" work
+  on the phone and in Android Auto. A spoken name or address lists the matching places to pick
+  from. During a trip, a new destination asks whether to replace the trip or add a stop, unless
+  you asked for a stop.
 - **Turn-by-turn navigation:**
   - lane guidance and a speed-limit sign;
   - spoken instructions, with a choice of speech rate, or warnings only;
@@ -42,9 +46,7 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
 - **Android Auto:**
   - the MapLibre map on the car screen;
   - Ferrostar's `NavigationTemplate`;
-  - voice destinations from the car's assistant ("navigate to …", "add a stop at …",
-    "directions to …"): a spoken name or address opens search results to pick from. During a trip,
-    a new destination asks whether to replace the trip or add a stop, unless you asked for a stop;
+  - voice destinations (see above), with the search results and the question on the car screen;
   - trip updates (`updateTrip`) that let supported cars show the next turn in the cluster or HUD.
 
 ## Build

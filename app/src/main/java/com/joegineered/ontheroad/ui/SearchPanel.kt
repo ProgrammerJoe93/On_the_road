@@ -200,7 +200,7 @@ fun SearchPanel(
 }
 
 @Composable
-private fun PlaceList(
+internal fun PlaceList(
     places: List<Place>,
     iconRes: (Place) -> Int,
     onClick: (Place) -> Unit,
