@@ -58,6 +58,7 @@ import com.joegineered.ontheroad.ui.OfflineIndicator
 import com.joegineered.ontheroad.ui.TrafficLayer
 import com.joegineered.ontheroad.ui.RoadSigns
 import com.joegineered.ontheroad.ui.SpeedCameraLayer
+import com.joegineered.ontheroad.ui.StopPinsLayer
 import com.joegineered.ontheroad.ui.StopsLayer
 import com.joegineered.ontheroad.ui.Speedometer
 import com.joegineered.ontheroad.ui.speedReading
@@ -212,6 +213,7 @@ class CarNavigationScreen(
     val slowTraffic by AppGraph.traffic.slowTraffic.collectAsState()
     val preview by viewModel.preview.collectAsState()
     val stops by AppGraph.roadsideStops.state.collectAsState()
+    val remainingStops by viewModel.remainingStops.collectAsState()
 
     browsingPadding = normalPadding
     navigationMapState = mapState
@@ -251,7 +253,13 @@ class CarNavigationScreen(
         if (liveTraffic) TrafficLayer(trafficEvents, slowTraffic)
         if (showChargers) ChargerLayer(chargers.filter { it.matches(plugTypes) })
         SpeedCameraLayer(cameras)
-        if (uiState?.isNavigating() == true) StopsLayer(stops) else RoutePreviewLayer(preview)
+        if (uiState?.isNavigating() == true) {
+          StopsLayer(stops)
+          StopPinsLayer(remainingStops.map { it.coordinate })
+        } else {
+          RoutePreviewLayer(preview)
+          StopPinsLayer(preview?.stops.orEmpty().map { it.coordinate })
+        }
       }
 
       OfflineIndicator(Modifier.align(Alignment.TopEnd).padding(normalPadding).padding(8.dp))
@@ -379,6 +387,9 @@ class CarNavigationScreen(
                 val summary =
                     listOfNotNull(
                             formatTripDistance(option.route.distance),
+                            preview.stops.size.takeIf { it > 0 }?.let {
+                              carContext.resources.getQuantityString(R.plurals.route_stops, it, it)
+                            },
                             option.via?.let { carContext.getString(R.string.route_via, it) },
                         )
                         .joinToString(" · ")
@@ -450,18 +461,7 @@ class CarNavigationScreen(
             .setTitle(carContext.getString(R.string.done))
             .setOnClickListener { viewModel.dismissArrival() }
             .build()
-    // After a stop on the way: carry on to the trip's destination.
-    val carryOn =
-        arrival.continueTo?.let { next ->
-          Action.Builder()
-              .setTitle(
-                  next.label?.let { carContext.getString(R.string.continue_to, it) }
-                      ?: carContext.getString(R.string.continue_trip)
-              )
-              .setFlags(Action.FLAG_PRIMARY)
-              .setOnClickListener { viewModel.continueTrip() }
-              .build()
-        }
+
     return NavigationTemplate.Builder()
         .setNavigationInfo(
             MessageInfo.Builder(carContext.getString(R.string.arrived_title))
@@ -469,7 +469,7 @@ class CarNavigationScreen(
                 .setImage(flag)
                 .build()
         )
-        .setActionStrip(ActionStrip.Builder().apply { carryOn?.let(::addAction) }.addAction(done).build())
+        .setActionStrip(ActionStrip.Builder().addAction(done).build())
         .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN).build())
         .build()
   }

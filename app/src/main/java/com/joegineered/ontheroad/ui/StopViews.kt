@@ -47,12 +47,14 @@ import org.maplibre.spatialk.geojson.Point
 import uniffi.ferrostar.GeographicCoordinate
 
 /**
- * Places to stop at ahead on the route: pick a kind (fuel, chargers, food, rest areas), then a
- * place to drive there. The trip continues from there afterwards.
+ * The trip's stops, which can be skipped, and places to stop at ahead on the route: pick a kind
+ * (fuel, chargers, food, rest areas), then a place to add it to the trip.
  */
 @Composable
 fun StopsAlongRouteCard(
     search: StopSearch,
+    tripStops: List<Destination>,
+    onSkipStop: (Destination) -> Unit,
     onSearch: (StopCategory) -> Unit,
     onSelect: (StopAhead) -> Unit,
     onClose: () -> Unit,
@@ -77,6 +79,15 @@ fun StopsAlongRouteCard(
         IconButton(onClick = onClose) {
           Icon(painterResource(R.drawable.ic_close), stringResource(R.string.close))
         }
+      }
+      // The stops already on the trip come first, so one can be skipped.
+      tripStops.forEachIndexed { index, stop ->
+        TripStopRow(
+            index + 1,
+            stop,
+            onRemove = { onSkipStop(stop) },
+            removeLabel = stringResource(R.string.skip_stop),
+        )
       }
       Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         StopCategory.entries.forEach { category ->

@@ -93,6 +93,34 @@ fun DestinationPinLayer(destination: GeographicCoordinate?) {
   )
 }
 
+/** The colour of stops on the way, on the map and in lists. */
+val StopPinColor = Color(0xFFE65100)
+
+/** Stops on the way, as orange pins smaller than the destination's. */
+@Composable
+@MaplibreComposable
+fun StopPinsLayer(stops: List<GeographicCoordinate>) {
+  if (stops.isEmpty()) return
+  val source =
+      rememberGeoJsonSource(
+          GeoJsonData.Features(
+              FeatureCollection(
+                  stops.map {
+                    Feature(geometry = Point(longitude = it.lng, latitude = it.lat), properties = buildJsonObject {})
+                  }
+              )
+          )
+      )
+  CircleLayer(
+      id = "otr-stop-pins",
+      source = source,
+      color = const(StopPinColor),
+      radius = const(8.dp),
+      strokeColor = const(Color.White),
+      strokeWidth = const(3.dp),
+  )
+}
+
 /**
  * EV chargers: fast (DC) chargers full size, AC chargers smaller. Tapping one calls [onClick]
  * with its id.

@@ -29,6 +29,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
@@ -58,6 +60,9 @@ fun SearchPanel(
     onActiveChanged: (Boolean) -> Unit = {},
     onChargersNearby: (() -> Unit)? = null,
     maxListHeight: Dp = 320.dp,
+    /** Focuses the search bar from outside, e.g. to search for a stop to add. */
+    focusRequester: FocusRequester? = null,
+    hint: String = stringResource(R.string.search_hint),
 ) {
   val scope = rememberCoroutineScope()
   val viewModel = AppGraph.navigationViewModel
@@ -77,10 +82,11 @@ fun SearchPanel(
   val focusManager = LocalFocusManager.current
 
   fun choose(place: Place) {
+    // Before clearing focus, which ends the caller's search mode (such as adding a stop).
+    onPlaceSelected(place)
     focusManager.clearFocus()
     query = ""
     search.clear()
-    onPlaceSelected(place)
   }
 
   Card(modifier = modifier.fillMaxWidth()) {
@@ -92,11 +98,13 @@ fun SearchPanel(
             search.onQueryChanged(it)
           },
           modifier =
-              Modifier.fillMaxWidth().onFocusChanged {
-                focused = it.isFocused
-                onActiveChanged(it.isFocused)
-              },
-          placeholder = { Text(stringResource(R.string.search_hint)) },
+              Modifier.fillMaxWidth()
+                  .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                  .onFocusChanged {
+                    focused = it.isFocused
+                    onActiveChanged(it.isFocused)
+                  },
+          placeholder = { Text(hint) },
           leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
           trailingIcon = {
             if (query.isNotEmpty() || focused) {

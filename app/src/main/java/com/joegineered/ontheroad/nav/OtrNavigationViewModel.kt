@@ -2,6 +2,7 @@ package com.joegineered.ontheroad.nav
 
 import android.util.Log
 import com.joegineered.ontheroad.cameras.LatLng
+import com.joegineered.ontheroad.cameras.MeasuredPolyline
 import com.joegineered.ontheroad.search.Place
 import com.joegineered.ontheroad.search.RecentDestinations
 import java.util.Locale
@@ -13,6 +14,7 @@ import com.stadiamaps.ferrostar.core.annotation.valhalla.valhallaExtendedOSRMAnn
 import com.stadiamaps.ferrostar.core.location.NavigationLocationProvider
 import com.stadiamaps.ferrostar.core.location.toUserLocation
 import com.stadiamaps.ferrostar.core.NavigationState
+import com.stadiamaps.ferrostar.core.isNavigating
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -78,11 +81,15 @@ data class RouteOption(val route: Route, val via: String?, val trafficEvents: In
     get() = route.steps.sumOf { it.duration }
 }
 
-/** Routes to the selected destination, best first, for the driver to choose from. */
+/**
+ * Routes to the selected destination via its [stops], best first, for the driver to choose from.
+ * With stops there is one route: the router offers alternatives only between two places.
+ */
 data class RoutePreview(
     val destination: Destination,
     val options: List<RouteOption>,
     val selectedIndex: Int = 0,
+    val stops: List<Destination> = emptyList(),
 ) {
   val selected: RouteOption
     get() = options[selectedIndex]
@@ -120,6 +127,10 @@ class OtrNavigationViewModel(
   private val _routingStatus = MutableStateFlow<RoutingStatus>(RoutingStatus.Idle)
   val routingStatus: StateFlow<RoutingStatus> = _routingStatus.asStateFlow()
 
+  private val _plannedStops = MutableStateFlow<List<Destination>>(emptyList())
+  /** Stops on the way to the selected destination, in driving order, while planning a trip. */
+  val plannedStops: StateFlow<List<Destination>> = _plannedStops.asStateFlow()
+
   private val _preview = MutableStateFlow<RoutePreview?>(null)
   /** Routes to the selected destination once planned; null while none are available. */
   val preview: StateFlow<RoutePreview?> = _preview.asStateFlow()
@@ -140,13 +151,22 @@ class OtrNavigationViewModel(
   private val _tripStarts = MutableSharedFlow<TripStart>(extraBufferCapacity = 1)
   val tripStarts: SharedFlow<TripStart> = _tripStarts.asSharedFlow()
 
-  /** The destination of the trip in progress. */
+  /** The destination of the trip in progress, and its stops on the way as last routed. */
   private var activeDestination: Destination? = null
-  /** A stop on the way being driven to, and the destination to continue to after it. */
-  private var stopover: Destination? = null
-  private var continueTo: Destination? = null
+  @Volatile private var activeStops: List<Destination> = emptyList()
   private val parkedNearby = ParkedNearbyDetector()
   private var finishing = false
+
+  /** The trip's stops not yet reached, in order. */
+  val remainingStops: StateFlow<List<Destination>> =
+      ferrostarCore.state
+          .map { state ->
+            (state.tripState as? TripState.Navigating)
+                ?.let { remainingStops(activeStops, it.remainingWaypoints.size) }
+                .orEmpty()
+          }
+          .distinctUntilChanged()
+          .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
   /** Shows the user's location on the map while browsing, not only while navigating. */
   override val navigationUiState: StateFlow<NavigationUiState> =
@@ -214,10 +234,7 @@ class OtrNavigationViewModel(
             destination = activeDestination,
             distanceMetres = summary.distanceTraveled,
             durationSeconds = ((endedAt - summary.startedAt.time) / 1000).coerceAtLeast(0),
-            continueTo = continueTo.takeIf { activeDestination != null && activeDestination == stopover },
         )
-    stopover = null
-    continueTo = null
     viewModelScope.launch {
       // Stopping navigation clears the speech queue; let "You have arrived" finish first.
       var waited = 0L
@@ -235,24 +252,41 @@ class OtrNavigationViewModel(
   }
 
   /**
-   * Drives to [stop] (fuel, a charger, food) during a trip, then offers to continue to the trip's
-   * destination on arrival. Without a trip, simply navigates to [stop].
+   * Adds [stop] (fuel, a charger, food) to the trip in progress, among its other stops in the
+   * order they come along the route. Without a trip, simply navigates to [stop].
    */
   fun stopOnTheWay(stop: Destination) {
     val active = activeDestination
-    if (active != null && navigationUiState.value.isNavigating()) {
-      // Already on the way to a stop: the new one replaces it, still before the destination.
-      continueTo = if (active == stopover) continueTo else active
-      stopover = stop
+    val state = ferrostarCore.state.value
+    if (active == null || !state.isNavigating()) {
+      startNavigation(stop)
+      return
     }
-    startNavigation(stop)
+    val route = MeasuredPolyline(state.routeGeometry.map { LatLng(it.lat, it.lng) })
+    startNavigation(active, insertStop(route, remainingStops.value, stop))
   }
 
-  /** After a stop on the way, navigates on to the trip's destination. */
-  fun continueTrip() {
-    val next = _arrival.value?.continueTo ?: return
-    _arrival.value = null
-    startNavigation(next)
+  /** Leaves [stop] out of the trip in progress, and routes on to the next stop or destination. */
+  fun skipStop(stop: Destination) {
+    val active = activeDestination ?: return
+    if (!navigationUiState.value.isNavigating()) return
+    startNavigation(active, remainingStops.value - stop)
+  }
+
+  /**
+   * Adds a stop on the way to the selected destination, last before it. With no destination yet,
+   * [stop] becomes the destination.
+   */
+  fun addStop(stop: Destination) {
+    val destination = _selectedDestination.value ?: return selectDestination(stop)
+    _plannedStops.update { it + stop }
+    planPreview(destination)
+  }
+
+  fun removeStop(stop: Destination) {
+    val destination = _selectedDestination.value ?: return
+    _plannedStops.update { it - stop }
+    planPreview(destination)
   }
 
   fun setLocationPermission(permitted: Boolean) {
@@ -265,6 +299,7 @@ class OtrNavigationViewModel(
 
   /** Chooses a destination and plans routes to it, to preview before starting. */
   fun selectDestination(destination: Destination) {
+    _plannedStops.value = emptyList()
     _selectedDestination.value = destination
     _arrival.value = null
     planPreview(destination)
@@ -273,6 +308,7 @@ class OtrNavigationViewModel(
   fun clearDestination() {
     previewJob?.cancel()
     _selectedDestination.value = null
+    _plannedStops.value = emptyList()
     _preview.value = null
     _routingStatus.value = RoutingStatus.Idle
   }
@@ -304,17 +340,18 @@ class OtrNavigationViewModel(
       return
     }
     _routingStatus.value = RoutingStatus.Loading
+    val stops = _plannedStops.value
     previewJob =
         viewModelScope.launch(Dispatchers.IO) {
           try {
-            val routes = planRoutes(origin, listOf(destination.toWaypoint()))
+            val routes = planRoutes(origin, (stops + destination).map { it.toWaypoint() })
             if (routes.isEmpty()) error("no route returned")
             val via = distinctiveRoads(routes.map { route -> route.steps.map { it.roadName to it.distance } })
             val options =
                 routes.mapIndexed { i, route -> RouteOption(route, via[i], trafficEventsOnRoute(route.geometry)) }
             ensureActive()
-            if (_selectedDestination.value != destination) return@launch
-            _preview.value = RoutePreview(destination, options)
+            if (_selectedDestination.value != destination || _plannedStops.value != stops) return@launch
+            _preview.value = RoutePreview(destination, options, stops = stops)
             _routingStatus.value = RoutingStatus.Idle
           } catch (e: CancellationException) {
             throw e
@@ -333,15 +370,16 @@ class OtrNavigationViewModel(
   /** Starts the previewed route chosen, or plans one if there is no preview (e.g. it failed). */
   fun startSelectedDestination() {
     val destination = _selectedDestination.value ?: return
-    val preview = _preview.value?.takeIf { it.destination == destination }
+    val stops = _plannedStops.value
+    val preview = _preview.value?.takeIf { it.destination == destination && it.stops == stops }
     if (preview == null) {
-      startNavigation(destination)
+      startNavigation(destination, stops)
       return
     }
     _routingStatus.value = RoutingStatus.Loading
     viewModelScope.launch(Dispatchers.IO) {
       try {
-        beginTrip(destination, preview.selected.route)
+        beginTrip(destination, preview.selected.route, stops)
       } catch (e: Exception) {
         Log.e(TAG, "Could not start navigation", e)
         _routingStatus.value = RoutingStatus.Failed(e.message ?: e.javaClass.simpleName)
@@ -349,7 +387,8 @@ class OtrNavigationViewModel(
     }
   }
 
-  fun startNavigation(destination: Destination) {
+  /** Navigates to [destination] via [stops]; with the active destination, this is a reroute. */
+  fun startNavigation(destination: Destination, stops: List<Destination> = emptyList()) {
     val origin = _location.value
     if (origin == null) {
       _routingStatus.value = RoutingStatus.Failed("no location fix")
@@ -359,9 +398,9 @@ class OtrNavigationViewModel(
 
     viewModelScope.launch(Dispatchers.IO) {
       try {
-        val routes = ferrostarCore.getRoutes(origin, listOf(destination.toWaypoint()))
+        val routes = ferrostarCore.getRoutes(origin, (stops + destination).map { it.toWaypoint() })
         val route = routes.firstOrNull() ?: error("no route returned")
-        beginTrip(destination, route)
+        beginTrip(destination, route, stops)
       } catch (e: Exception) {
         Log.e(TAG, "Routing failed", e)
         _routingStatus.value = routingFailure(e)
@@ -370,17 +409,13 @@ class OtrNavigationViewModel(
   }
 
   /** Starts navigating [route], or switches the active session to it (a reroute). */
-  private suspend fun beginTrip(destination: Destination, route: Route) {
+  private suspend fun beginTrip(destination: Destination, route: Route, stops: List<Destination>) {
     if (_simulated.value) locationProvider.enableSimulationOn(route)
 
     val newTrip = destination != activeDestination
-    val isStop = destination == stopover
-    if (newTrip && !isStop) {
-      stopover = null
-      continueTo = null
-    }
     setDestination(destination.label)
     activeDestination = destination
+    activeStops = stops
     parkedNearby.reset()
     _arrival.value = null
     if (navigationUiState.value.isNavigating()) {
@@ -390,16 +425,15 @@ class OtrNavigationViewModel(
     }
     previewJob?.cancel()
     _selectedDestination.value = null
+    _plannedStops.value = emptyList()
     _preview.value = null
     _routingStatus.value = RoutingStatus.Idle
     val place = destination.toPlace()
     if (newTrip) _tripStarts.tryEmit(TripStart(place.title, route.geometry))
-    // Stops on the way would crowd out real destinations. Remembering the destination is
-    // best-effort; it must not fail an active session.
-    if (!isStop) {
-      runCatching { recentDestinations.add(place) }
-          .onFailure { Log.w(TAG, "Could not save recent destination", it) }
-    }
+    // Remembering the destination (not the stops, such as fuel on the way) is best-effort; it must
+    // not fail an active session.
+    runCatching { recentDestinations.add(place) }
+        .onFailure { Log.w(TAG, "Could not save recent destination", it) }
   }
 
   private fun routingFailure(e: Exception): RoutingStatus {
@@ -412,16 +446,17 @@ class OtrNavigationViewModel(
     }
   }
 
-  /** Plans a new route to the current destination, e.g. around a newly reported closure. */
+  /**
+   * Plans a new route to the current destination via the stops still ahead, e.g. around a newly
+   * reported closure.
+   */
   fun rerouteToActiveDestination() {
     val destination = activeDestination ?: return
     if (!navigationUiState.value.isNavigating()) return
-    startNavigation(destination)
+    startNavigation(destination, remainingStops.value)
   }
 
   override fun stopNavigation() {
-    stopover = null
-    continueTo = null
     endSession()
   }
 
@@ -430,6 +465,7 @@ class OtrNavigationViewModel(
     ferrostarCore.stopNavigation()
     setDestination(null)
     activeDestination = null
+    activeStops = emptyList()
     parkedNearby.reset()
   }
 

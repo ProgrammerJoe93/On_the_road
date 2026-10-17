@@ -24,8 +24,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
 /**
- * Stops on the way, for Android Auto: the kinds of place to look for, then (with [category]) the
- * places of that kind ahead on the route. Picking one drives there, then on to the destination.
+ * Stops on the way, for Android Auto: the trip's stops (to skip one) and the kinds of place to
+ * look for, then (with [category]) the places of that kind ahead on the route. Picking one adds it
+ * to the trip.
  */
 class CarStopsScreen(carContext: CarContext, private val category: StopCategory? = null) :
     Screen(carContext) {
@@ -40,15 +41,32 @@ class CarStopsScreen(carContext: CarContext, private val category: StopCategory?
     if (category != null) {
       stops.search(category)
       stops.state.onEach { invalidate() }.launchIn(lifecycleScope)
+    } else {
+      AppGraph.navigationViewModel.remainingStops.onEach { invalidate() }.launchIn(lifecycleScope)
     }
   }
 
   override fun onGetTemplate(): Template {
     val builder = ListTemplate.Builder().setHeaderAction(Action.BACK)
     if (category == null) {
+      val skip = CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_close)).build()
       val kinds =
           ItemList.Builder()
               .apply {
+                // The trip's stops first, to skip one the driver no longer wants.
+                AppGraph.navigationViewModel.remainingStops.value.forEach { stop ->
+                  val name = stop.label ?: stop.coordinateText()
+                  addItem(
+                      Row.Builder()
+                          .setTitle(carContext.getString(R.string.skip_stop_named, name))
+                          .setImage(skip)
+                          .setOnClickListener {
+                            AppGraph.navigationViewModel.skipStop(stop)
+                            screenManager.pop()
+                          }
+                          .build()
+                  )
+                }
                 StopCategory.entries.forEach { kind ->
                   addItem(
                       Row.Builder()

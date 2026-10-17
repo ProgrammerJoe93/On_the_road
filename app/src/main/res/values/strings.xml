@@ -176,6 +176,14 @@
     <string name="stops_none">Nothing found on the route ahead.</string>
     <string name="stops_failed">Couldn\'t search along the route. Try again in a moment.</string>
     <string name="stops_offline">You\'re offline. Searching along the route needs an internet connection.</string>
-    <string name="continue_to">Continue to %1$s</string>
-    <string name="continue_trip">Continue trip</string>
+    <string name="add_stop">Add stop</string>
+    <string name="search_stop_hint">Search for a stop</string>
+    <string name="remove_stop">Remove stop</string>
+    <string name="trip_stops">Stops on this trip</string>
+    <string name="skip_stop">Skip</string>
+    <string name="skip_stop_named">Skip %1$s</string>
+    <plurals name="route_stops">
+        <item quantity="one">%1$d stop</item>
+        <item quantity="other">%1$d stops</item>
+    </plurals>
 </resources>

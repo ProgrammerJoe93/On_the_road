@@ -1,6 +1,11 @@
 package com.joegineered.ontheroad.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,16 +65,20 @@ import kotlin.math.tan
 import kotlinx.coroutines.launch
 
 /**
- * The chosen destination with the routes to it: tap a route to choose it (or tap its line on
- * the map), then Start. While routes load, a spinner; if planning fails, the reason.
+ * The chosen destination with its stops on the way and the routes to it: tap a route to choose it
+ * (or tap its line on the map), then Start. While routes load, a spinner; if planning fails, the
+ * reason.
  */
 @Composable
 fun DestinationCard(
     destination: Destination,
+    stops: List<Destination>,
     preview: RoutePreview?,
     routingStatus: RoutingStatus,
     hasLocation: Boolean,
     onSelectRoute: (Int) -> Unit,
+    onAddStop: () -> Unit,
+    onRemoveStop: (Destination) -> Unit,
     onStart: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -88,7 +97,21 @@ fun DestinationCard(
         }
         SavePlaceButton(destination)
       }
-      preview?.takeIf { it.destination == destination }?.let { routes ->
+      if (stops.isNotEmpty()) {
+        Text(
+            stringResource(R.string.trip_stops),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        stops.forEachIndexed { index, stop ->
+          TripStopRow(index + 1, stop, onRemove = { onRemoveStop(stop) })
+        }
+      }
+      TextButton(onClick = onAddStop, contentPadding = ButtonDefaults.TextButtonWithIconContentPadding) {
+        Icon(painterResource(R.drawable.ic_add), contentDescription = null, Modifier.size(18.dp))
+        Text(stringResource(R.string.add_stop), Modifier.padding(start = 8.dp))
+      }
+      preview?.takeIf { it.destination == destination && it.stops == stops }?.let { routes ->
         routes.options.forEachIndexed { index, option ->
           RouteOptionRow(option, selected = index == routes.selectedIndex, onClick = { onSelectRoute(index) })
         }
@@ -119,6 +142,36 @@ fun DestinationCard(
         OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
       }
     }
+  }
+}
+
+/** A stop on the way, numbered in driving order, with a button to remove it. */
+@Composable
+fun TripStopRow(number: Int, stop: Destination, onRemove: () -> Unit, removeLabel: String = stringResource(R.string.remove_stop)) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Surface(shape = CircleShape, color = StopPinColor, modifier = Modifier.size(24.dp)) {
+      Box(contentAlignment = Alignment.Center) {
+        Text("$number", style = MaterialTheme.typography.labelMedium, color = Color.White)
+      }
+    }
+    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+      Text(
+          stop.label ?: stop.coordinateText(),
+          style = MaterialTheme.typography.bodyLarge,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+      stop.subtitle?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+    IconButton(onClick = onRemove) { Icon(painterResource(R.drawable.ic_close), removeLabel) }
   }
 }
 

@@ -7,8 +7,6 @@ data class Arrival(
     val distanceMetres: Double,
     /** Time from start to arrival, in seconds. */
     val durationSeconds: Long,
-    /** After a stop on the way, the destination to continue to. */
-    val continueTo: Destination? = null,
 )
 
 /**

@@ -37,6 +37,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import org.maplibre.compose.util.MaplibreComposable
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -288,6 +290,7 @@ fun MainScreen(viewModel: OtrNavigationViewModel = AppGraph.navigationViewModel)
       SpeedCameraLayer(cameras)
       if (uiState.isNavigating()) StopsLayer(stops)
       if (!uiState.isNavigating()) RoutePreviewLayer(preview, onSelect = viewModel::selectRoute)
+      StopPinLayerFor(uiState.isNavigating(), viewModel)
       DestinationPinLayer(destination?.coordinate ?: arrival?.destination?.coordinate)
       if (pickingOfflineArea && !uiState.isNavigating()) {
         // One pack per area: the day style's, as the night pack covers the same area.
@@ -323,6 +326,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
   val roadworks by AppGraph.traffic.currentRoadworks.collectAsState()
   val uiState by AppGraph.navigationViewModel.navigationUiState.collectAsState()
   val stopSearch by AppGraph.roadsideStops.state.collectAsState()
+  val remainingStops by AppGraph.navigationViewModel.remainingStops.collectAsState()
   var showStops by remember { mutableStateOf(false) }
   val context = LocalContext.current
   var overlayOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -386,6 +390,8 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
     if (showStops && selectedCharger == null) {
       StopsAlongRouteCard(
           search = stopSearch,
+          tripStops = remainingStops,
+          onSkipStop = AppGraph.navigationViewModel::skipStop,
           onSearch = AppGraph.roadsideStops::search,
           onSelect = { stop ->
             showStops = false
@@ -433,8 +439,12 @@ private fun BrowsingOverlay(
   val routingStatus by viewModel.routingStatus.collectAsState()
   val location by viewModel.location.collectAsState()
 
+  val plannedStops by viewModel.plannedStops.collectAsState()
   val scope = rememberCoroutineScope()
   var searching by remember { mutableStateOf(false) }
+  // "Add stop" focuses the search bar; the next place picked is added as a stop.
+  var addingStop by remember { mutableStateOf(false) }
+  val searchFocus = remember { FocusRequester() }
   var showNearbyChargers by remember { mutableStateOf(false) }
   val selectedCharger by AppGraph.chargers.selected.collectAsState()
   val selectedTraffic by AppGraph.traffic.selected.collectAsState()
@@ -447,8 +457,14 @@ private fun BrowsingOverlay(
   Box(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
     SearchPanel(
         onPlaceSelected = { place ->
-          viewModel.selectDestination(Destination.from(place))
-          scope.launch { navigationMapState.showDestination(place.lat, place.lng, landscape) }
+          if (addingStop && destination != null) {
+            // The routes are framed again once planned, so the map doesn't move to the stop.
+            addingStop = false
+            viewModel.addStop(Destination.from(place))
+          } else {
+            viewModel.selectDestination(Destination.from(place))
+            scope.launch { navigationMapState.showDestination(place.lat, place.lng, landscape) }
+          }
         },
         modifier =
             Modifier.align(Alignment.TopStart)
@@ -456,8 +472,13 @@ private fun BrowsingOverlay(
                 .then(panelWidth)
                 .onGloballyPositioned { onSearchBottomChanged(with(density) { it.boundsInRoot().bottom.toDp() }) },
         maxListHeight = if (landscape) 200.dp else 320.dp,
-        onActiveChanged = { searching = it },
+        onActiveChanged = {
+          searching = it
+          if (!it) addingStop = false
+        },
         onChargersNearby = { showNearbyChargers = true },
+        focusRequester = searchFocus,
+        hint = stringResource(if (addingStop) R.string.search_stop_hint else R.string.search_hint),
     )
 
     // Hidden while searching so they don't cover the results list.
@@ -493,9 +514,7 @@ private fun BrowsingOverlay(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       OfflineIndicator()
-      arrival?.let {
-        ArrivalCard(it, onDone = { viewModel.dismissArrival() }, onContinue = { viewModel.continueTrip() })
-      }
+      arrival?.let { ArrivalCard(it, onDone = { viewModel.dismissArrival() }) }
 
       if (showNearbyChargers && selectedCharger == null) {
         NearbyChargersCard(
@@ -531,16 +550,31 @@ private fun BrowsingOverlay(
       destination?.let { selected ->
         DestinationCard(
             destination = selected,
+            stops = plannedStops,
             preview = preview,
             routingStatus = routingStatus,
             hasLocation = location != null,
             onSelectRoute = viewModel::selectRoute,
+            onAddStop = {
+              addingStop = true
+              searchFocus.requestFocus()
+            },
+            onRemoveStop = viewModel::removeStop,
             onStart = { viewModel.startSelectedDestination() },
             onCancel = { viewModel.clearDestination() },
         )
       }
     }
   }
+}
+
+/** Pins for the stops on the way: those planned while previewing, or those still ahead. */
+@Composable
+@MaplibreComposable
+private fun StopPinLayerFor(navigating: Boolean, viewModel: OtrNavigationViewModel) {
+  val planned by viewModel.plannedStops.collectAsState()
+  val remaining by viewModel.remainingStops.collectAsState()
+  StopPinsLayer((if (navigating) remaining else planned).map { it.coordinate })
 }
 
 /** Starts navigating to a charger; during a trip, as a stop on the way to its destination. */
