@@ -20,6 +20,9 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   on the phone and in Android Auto. A spoken name or address lists the matching places to pick
   from. During a trip, a new destination asks whether to replace the trip or add a stop, unless
   you asked for a stop.
+- **Shared places:** share a place to the app from another app: a Google Maps, OpenStreetMap or
+  Apple Maps link (Google's short links are followed online), coordinates, or an address to search
+  for. It opens the routes to it, ready to start.
 - **Turn-by-turn navigation:**
   - lane guidance and a speed-limit sign;
   - spoken instructions, with a choice of speech rate, or warnings only;

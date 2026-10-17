@@ -49,6 +49,12 @@
                 <data android:scheme="geo" />
                 <data android:scheme="google.navigation" />
             </intent-filter>
+            <!-- Places shared as text from other apps: map links, addresses, coordinates. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
             <!-- Assistant's navigation intents ("navigate to …", "add a stop at …"), on the phone
                  and in Android Auto. Android Auto finds its action on this activity, and sends it
                  to OtrCarSession. -->

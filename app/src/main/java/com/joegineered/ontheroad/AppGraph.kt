@@ -18,6 +18,7 @@ import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.nav.RouteAvoidance
+import com.joegineered.ontheroad.nav.ShortLinkResolver
 import com.joegineered.ontheroad.nav.valhallaOptions
 import com.joegineered.ontheroad.nav.TrafficAwareRouteProvider
 import com.joegineered.ontheroad.traffic.DigitrafficClient
@@ -219,6 +220,8 @@ object AppGraph {
   val settings: SettingsRepository by lazy { SettingsRepository(appContext) }
 
   val geocoder: PhotonGeocoder by lazy { PhotonGeocoder(httpClient) }
+
+  val shortLinks: ShortLinkResolver by lazy { ShortLinkResolver(httpClient) }
 
   val chargers: ChargerController by lazy {
     ChargerController(chargerRepository, CoroutineScope(SupervisorJob() + Dispatchers.IO))
