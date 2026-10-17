@@ -28,6 +28,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - spoken instructions, with a choice of speech rate, or warnings only;
   - metric or imperial units, by region or chosen in settings;
   - rerouting when you leave the route;
+  - through tunnels and other places without GPS, the position keeps moving along the route at your
+    last speed for up to 2 minutes, so the instructions keep up;
   - background navigation through a foreground service.
 - **Speed camera warnings:**
   - camera data comes from OpenStreetMap through the Overpass API;

@@ -108,6 +108,23 @@ class MeasuredPolyline(val points: List<LatLng>) {
     }
     return best
   }
+
+  /** The point [alongMetres] from the start, on the line (clamped to its ends). */
+  fun pointAt(alongMetres: Double): PolylineProjection? {
+    if (points.size < 2) return null
+    val along = alongMetres.coerceIn(0.0, length)
+    val i = cumulative.indexOfFirst { it >= along }.coerceAtLeast(1)
+    val a = points[i - 1]
+    val b = points[i]
+    val segment = cumulative[i] - cumulative[i - 1]
+    val t = if (segment == 0.0) 0.0 else (along - cumulative[i - 1]) / segment
+    return PolylineProjection(
+        offsetMetres = 0.0,
+        alongMetres = along,
+        segmentBearing = bearingDegrees(a, b),
+        point = LatLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lng)),
+    )
+  }
 }
 
 /**

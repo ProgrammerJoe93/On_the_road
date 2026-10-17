@@ -358,6 +358,7 @@ private fun NavigatingOverlay(modifier: Modifier, bannerAnchor: Offset?) {
         else Modifier.align(Alignment.CenterStart).padding(start = 16.dp)
     Column(badgeModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
       OfflineIndicator()
+      PositionEstimatedIndicator()
       warning?.let { CameraWarningBadge(it) }
       trafficWarning?.let { TrafficWarningBadge(it) }
     }

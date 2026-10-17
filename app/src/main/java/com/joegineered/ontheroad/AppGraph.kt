@@ -16,6 +16,8 @@ import com.joegineered.ontheroad.chargers.ChargerController
 import com.joegineered.ontheroad.chargers.ChargerRepository
 import com.joegineered.ontheroad.config.AppConfig
 import com.joegineered.ontheroad.cameras.LatLng
+import com.joegineered.ontheroad.nav.DeadReckoner
+import com.joegineered.ontheroad.nav.DeadReckoningLocationProvider
 import com.joegineered.ontheroad.nav.OtrNavigationViewModel
 import com.joegineered.ontheroad.nav.RouteAvoidance
 import com.joegineered.ontheroad.nav.ShortLinkResolver
@@ -60,6 +62,7 @@ import org.maplibre.compose.offline.getOfflineManager
 import uniffi.ferrostar.CourseFiltering
 import uniffi.ferrostar.NavigationControllerConfig
 import uniffi.ferrostar.RouteDeviationTracking
+import uniffi.ferrostar.TripState
 import uniffi.ferrostar.WaypointAdvanceMode
 import uniffi.ferrostar.stepAdvanceDistanceEntryAndExit
 import uniffi.ferrostar.stepAdvanceDistanceToEndOfStep
@@ -145,9 +148,16 @@ object AppGraph {
     )
   }
 
+  /** GPS, kept moving along the route through tunnels; see [DeadReckoner]. */
+  val liveLocation: DeadReckoningLocationProvider by lazy {
+    DeadReckoningLocationProvider(FusedNavigationLocationProvider(appContext)) {
+      ferrostarCore.state.value.takeIf { it.tripState is TripState.Navigating }?.routeGeometry
+    }
+  }
+
   val locationProvider: NavigationLocationProvider by lazy {
     NavigationLocationProvider(
-        liveProviding = FusedNavigationLocationProvider(appContext),
+        liveProviding = liveLocation,
         simulatedProvider = SimulatedLocationProvider(warpFactor = 2u),
     )
   }

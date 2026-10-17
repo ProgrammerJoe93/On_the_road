@@ -43,17 +43,8 @@ object ClosureAvoidance {
   private fun keyPoints(line: List<LatLng>): List<LatLng> {
     if (line.size < 2) return line
     val measured = MeasuredPolyline(line)
-    val middle = pointAt(measured, measured.length / 2) ?: line[line.size / 2]
+    val middle = measured.pointAt(measured.length / 2)?.point ?: line[line.size / 2]
     return listOf(line.first(), middle, line.last()).distinct()
-  }
-
-  private fun pointAt(line: MeasuredPolyline, along: Double): LatLng? {
-    val i = line.cumulative.indexOfFirst { it >= along }.takeIf { it > 0 } ?: return null
-    val a = line.points[i - 1]
-    val b = line.points[i]
-    val segment = line.cumulative[i] - line.cumulative[i - 1]
-    val t = if (segment == 0.0) 0.0 else (along - line.cumulative[i - 1]) / segment
-    return LatLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lng))
   }
 
   private fun square(centre: LatLng): List<List<Double>> {

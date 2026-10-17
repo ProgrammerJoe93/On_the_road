@@ -182,6 +182,7 @@
     <string name="trip_stops">Stops on this trip</string>
     <string name="skip_stop">Skip</string>
     <string name="skip_stop_named">Skip %1$s</string>
+    <string name="position_estimated">No GPS · position estimated</string>
     <string name="shared_no_place">Couldn\'t find a place in what was shared.</string>
     <string name="trip_choice_title">Change your trip?</string>
     <string name="trip_choice_message">Add %1$s as a stop, or drive there instead of your current destination?</string>

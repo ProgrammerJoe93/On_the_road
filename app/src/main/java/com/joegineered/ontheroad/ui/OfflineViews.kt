@@ -62,6 +62,19 @@ import org.maplibre.compose.camera.CameraProjection
 fun OfflineIndicator(modifier: Modifier = Modifier) {
   val status by AppGraph.network.status.collectAsState()
   if (status.online) return
+  StatusPill(R.drawable.ic_cloud_off, stringResource(R.string.offline), modifier)
+}
+
+/** Shown while GPS is lost during a trip and the position is estimated along the route. */
+@Composable
+fun PositionEstimatedIndicator(modifier: Modifier = Modifier) {
+  val estimating by AppGraph.liveLocation.estimating.collectAsState()
+  if (!estimating) return
+  StatusPill(R.drawable.ic_gps_off, stringResource(R.string.position_estimated), modifier)
+}
+
+@Composable
+private fun StatusPill(iconRes: Int, text: String, modifier: Modifier) {
   Surface(
       modifier = modifier,
       shape = RoundedCornerShape(50),
@@ -74,8 +87,8 @@ fun OfflineIndicator(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      Icon(painterResource(R.drawable.ic_cloud_off), contentDescription = null, modifier = Modifier.size(18.dp))
-      Text(stringResource(R.string.offline), style = MaterialTheme.typography.labelLarge)
+      Icon(painterResource(iconRes), contentDescription = null, modifier = Modifier.size(18.dp))
+      Text(text, style = MaterialTheme.typography.labelLarge)
     }
   }
 }
