@@ -37,6 +37,9 @@ adb emu geo fix 24.94 60.17          # put the device in Helsinki
 adb shell svc wifi disable; adb shell svc data disable   # test offline behaviour
 ```
 
+`scripts/deploy.sh --headless --offline` does all of this: it builds, starts the emulator if
+needed (in Helsinki), installs and opens the app.
+
 When the app starts, the map may sit at its default position (open ocean, plain grey) until you
 tap the "my location" button. Use `adb shell uiautomator dump /dev/tty` to read on-screen text,
 and `adb exec-out screencap -p > shot.png` for screenshots. For Android Auto, see the DHU steps in

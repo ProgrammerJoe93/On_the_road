@@ -68,6 +68,18 @@ Requirements:
 ./gradlew :app:testDebugUnitTest    # unit tests (offline)
 ```
 
+Or use the scripts in `scripts/`, which find the SDK and the emulator for you. Extra arguments go
+to Gradle (e.g. `--offline`):
+
+```sh
+scripts/build.sh                    # build the debug APK
+scripts/test.sh                     # unit tests; --live adds the live server tests
+scripts/emulator.sh                 # start the emulator in Helsinki (--headless, --at <lon> <lat>)
+scripts/deploy.sh                   # build, start the emulator if needed, install and open the app
+```
+
+The emulator scripts use the AVD `otr_test`; set `OTR_AVD` to use another.
+
 The camera pipeline also has a live test, which calls the real Valhalla and Overpass servers:
 
 ```sh
