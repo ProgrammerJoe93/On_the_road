@@ -59,7 +59,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - the MapLibre map on the car screen;
   - Ferrostar's `NavigationTemplate`;
   - voice destinations (see above), with the search results and the question on the car screen;
-  - trip updates (`updateTrip`) that let supported cars show the next turn in the cluster or HUD.
+  - trip updates (`updateTrip`) that let supported cars show the next turn in the cluster or HUD;
+  - the map and route in the instrument cluster, in cars where Android Auto draws navigation there.
 
 ## Build
 

@@ -2,10 +2,12 @@ package com.joegineered.ontheroad.car
 
 import android.icu.util.MeasureUnit
 import androidx.car.app.model.Distance
+import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.car.app.navigation.model.RoutingInfo
 import androidx.car.app.navigation.model.TravelEstimate
 import com.joegineered.ontheroad.config.AppConfig
 import com.stadiamaps.ferrostar.ui.formatters.LocalizedDistanceFormatter
+import uniffi.ferrostar.TripProgress
 
 /**
  * A distance for car templates, in the units setting. Ferrostar's car templates take their units
@@ -48,4 +50,26 @@ fun RoutingInfo.withDistance(distance: Distance): RoutingInfo {
         junctionImage?.let(::setJunctionImage)
       }
       .build()
+}
+
+/**
+ * Copies the turn card and arrival estimate of Ferrostar's [navigation] template, with distances
+ * from [carDistance].
+ */
+fun NavigationTemplate.Builder.setTripInfo(
+    navigation: NavigationTemplate,
+    progress: TripProgress?,
+): NavigationTemplate.Builder = apply {
+  navigation.navigationInfo?.let { info ->
+    val routing = info as? RoutingInfo
+    setNavigationInfo(
+        if (routing != null && progress != null) routing.withDistance(carDistance(progress.distanceToNextManeuver))
+        else info
+    )
+  }
+  navigation.destinationTravelEstimate?.let { estimate ->
+    setDestinationTravelEstimate(
+        progress?.let { estimate.withDistance(carDistance(it.distanceRemaining)) } ?: estimate
+    )
+  }
 }

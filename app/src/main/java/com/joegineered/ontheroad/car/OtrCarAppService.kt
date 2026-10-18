@@ -17,7 +17,26 @@ class OtrCarAppService : CarAppService() {
   // TODO before Play release: restrict to known Android Auto hosts with HostValidator.Builder.
   override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
-  override fun onCreateSession(sessionInfo: SessionInfo): Session = OtrCarSession()
+  override fun onCreateSession(sessionInfo: SessionInfo): Session =
+      if (sessionInfo.displayType == SessionInfo.DISPLAY_TYPE_CLUSTER) OtrClusterSession()
+      else OtrCarSession()
+}
+
+/**
+ * The instrument cluster session, which cars that draw Android Auto navigation in the cluster
+ * start next to [OtrCarSession]. It only shows the map; [OtrCarSession] runs everything else.
+ */
+class OtrClusterSession : Session() {
+  private var clusterScreen: CarClusterScreen? = null
+
+  override fun onCarConfigurationChanged(newConfiguration: Configuration) {
+    clusterScreen?.onCarConfigurationChanged()
+  }
+
+  override fun onCreateScreen(intent: Intent): Screen {
+    AppGraph.init(carContext)
+    return CarClusterScreen(carContext).also { clusterScreen = it }
+  }
 }
 
 /**

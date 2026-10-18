@@ -19,7 +19,6 @@ import androidx.car.app.navigation.model.RoutePreviewNavigationTemplate
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
-import androidx.car.app.navigation.model.RoutingInfo
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -445,19 +444,8 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
             .build()
     val stripActions = if (actions.size < MAX_STRIP_ACTIONS) listOf(stops) + actions else actions
     return NavigationTemplate.Builder()
+        .setTripInfo(navigation, progress)
         .apply {
-          navigation.navigationInfo?.let { info ->
-            val routing = info as? RoutingInfo
-            setNavigationInfo(
-                if (routing != null && progress != null) routing.withDistance(carDistance(progress.distanceToNextManeuver))
-                else info
-            )
-          }
-          navigation.destinationTravelEstimate?.let { estimate ->
-            setDestinationTravelEstimate(
-                progress?.let { estimate.withDistance(carDistance(it.distanceRemaining)) } ?: estimate
-            )
-          }
           navigation.mapActionStrip?.let { setMapActionStrip(it) }
           if (stripActions.isNotEmpty()) {
             setActionStrip(ActionStrip.Builder().apply { stripActions.forEach(::addAction) }.build())
