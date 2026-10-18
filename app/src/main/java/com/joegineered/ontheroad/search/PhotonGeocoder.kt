@@ -96,6 +96,11 @@ class PhotonGeocoder(
       return features
           .mapNotNull { feature -> (feature as? JsonObject)?.toPlace(homeCountry) }
           .distinctBy { it.title to it.subtitle }
+          // Photon can list one place twice with different address details, e.g. a square
+          // with and without a street; show it once.
+          .fold(emptyList()) { kept, place ->
+            if (kept.any { it.title == place.title && it.isSameSpot(place) }) kept else kept + place
+          }
     }
 
     /** The most specific settlement name in a Photon reverse-geocoding response. */

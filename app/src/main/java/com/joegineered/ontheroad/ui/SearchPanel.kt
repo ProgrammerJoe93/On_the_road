@@ -209,7 +209,8 @@ internal fun PlaceList(
 ) {
   if (showDivider) HorizontalDivider()
   LazyColumn(Modifier.heightIn(max = maxHeight)) {
-    items(places, key = { it.key() }) { place -> PlaceRow(place, iconRes(place), onClick) }
+    // No keys: rows hold no state, and results may repeat a place, which keys would reject.
+    items(places) { place -> PlaceRow(place, iconRes(place), onClick) }
   }
 }
 

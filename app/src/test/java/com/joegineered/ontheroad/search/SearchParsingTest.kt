@@ -72,6 +72,24 @@ class SearchParsingTest {
   }
 
   @Test
+  fun `same place with different address details is listed once`() {
+    val body =
+        collection(
+            feature(24.9360749, 60.1708339, """"name":"Paasikivenaukio","city":"Helsinki""""),
+            feature(
+                24.9360749, 60.1708339,
+                """"name":"Paasikivenaukio","postcode":"00100","city":"Helsinki"""",
+            ),
+            feature(24.65, 60.18, """"name":"Paasikivenaukio","city":"Espoo""""),
+        )
+
+    val places = PhotonGeocoder.parse(body, homeCountry = "FI")
+
+    assertEquals(2, places.size)
+    assertEquals(60.18, places[1].lat, 0.0)
+  }
+
+  @Test
   fun `recents put the newest first and replace the same spot`() {
     val home = Place("Home", null, 60.17, 24.94)
     val work = Place("Work", null, 60.20, 24.66)
