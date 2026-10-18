@@ -1,5 +1,7 @@
 package com.joegineered.ontheroad.car
 
+import android.text.SpannableString
+import android.text.Spanned
 import androidx.car.app.AppManager
 import androidx.car.app.CarContext
 import androidx.car.app.model.Action
@@ -8,6 +10,7 @@ import androidx.car.app.model.Alert
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.CarText
+import androidx.car.app.model.DurationSpan
 import androidx.activity.OnBackPressedCallback
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.Row
@@ -16,6 +19,7 @@ import androidx.car.app.navigation.model.RoutePreviewNavigationTemplate
 import androidx.car.app.navigation.NavigationManager
 import androidx.car.app.navigation.model.MessageInfo
 import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.car.app.navigation.model.RoutingInfo
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +79,7 @@ import com.stadiamaps.ferrostar.composeui.config.VisualNavigationViewConfig
 import com.stadiamaps.ferrostar.composeui.config.withSpeedLimitStyle
 import com.stadiamaps.ferrostar.core.NavigationUiState
 import com.stadiamaps.ferrostar.core.boundingBox
+import com.stadiamaps.ferrostar.core.extensions.progress
 import com.stadiamaps.ferrostar.maplibreui.runtime.NavigationMapState
 import com.stadiamaps.ferrostar.maplibreui.runtime.navigationCameraOptions
 import com.stadiamaps.ferrostar.maplibreui.runtime.rememberNavigationMapState
@@ -92,6 +97,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import uniffi.ferrostar.DrivingSide
+import uniffi.ferrostar.TripProgress
 
 /**
  * The Android Auto navigation screen. Renders the MapLibre map on the car surface and shows
@@ -302,7 +308,7 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
           .setOnCycleCamera(navigationMapState?.isTrackingUser == true) { cycleCamera() }
           .setTripState(state.tripState)
           .build()
-      return withStopsAction(template)
+      return adaptNavigationTemplate(template, state.tripState?.progress())
     }
 
     viewModel.arrival.value?.let { return arrivalTemplate(it) }
@@ -388,9 +394,14 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
                             option.via?.let { carContext.getString(R.string.route_via, it) },
                         )
                         .joinToString(" · ")
+                // The host requires a duration (or distance) span on every route row.
+                val duration =
+                    SpannableString(formatDuration(carContext, option.durationSeconds.toLong())).apply {
+                      setSpan(DurationSpan.create(option.durationSeconds.toLong()), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+                    }
                 addItem(
                     Row.Builder()
-                        .setTitle(formatDuration(carContext, option.durationSeconds.toLong()))
+                        .setTitle(duration)
                         .addText(summary)
                         .apply {
                           if (option.trafficEvents > 0) {
@@ -420,24 +431,37 @@ class CarNavigationScreen(carContext: CarContext) : ComposableScreen(carContext)
   }
 
   /**
-   * Ferrostar's navigation template with a "Stops on the way" action added to its action strip;
-   * its builder has no way to add one.
+   * Ferrostar's navigation template, with a "Stops on the way" action added to its action strip
+   * (its builder has no way to add one), and distances in the units setting rather than the device
+   * locale's (see [carDistance]).
    */
-  private fun withStopsAction(template: Template): Template {
+  private fun adaptNavigationTemplate(template: Template, progress: TripProgress?): Template {
     val navigation = template as? NavigationTemplate ?: return template
     val actions = navigation.actionStrip?.actions.orEmpty()
-    if (actions.size >= MAX_STRIP_ACTIONS) return template
     val stops =
         Action.Builder()
             .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, R.drawable.ic_fuel)).build())
             .setOnClickListener { screenManager.push(CarStopsScreen(carContext)) }
             .build()
+    val stripActions = if (actions.size < MAX_STRIP_ACTIONS) listOf(stops) + actions else actions
     return NavigationTemplate.Builder()
         .apply {
-          navigation.navigationInfo?.let { setNavigationInfo(it) }
-          navigation.destinationTravelEstimate?.let { setDestinationTravelEstimate(it) }
+          navigation.navigationInfo?.let { info ->
+            val routing = info as? RoutingInfo
+            setNavigationInfo(
+                if (routing != null && progress != null) routing.withDistance(carDistance(progress.distanceToNextManeuver))
+                else info
+            )
+          }
+          navigation.destinationTravelEstimate?.let { estimate ->
+            setDestinationTravelEstimate(
+                progress?.let { estimate.withDistance(carDistance(it.distanceRemaining)) } ?: estimate
+            )
+          }
           navigation.mapActionStrip?.let { setMapActionStrip(it) }
-          setActionStrip(ActionStrip.Builder().apply { (listOf(stops) + actions).forEach(::addAction) }.build())
+          if (stripActions.isNotEmpty()) {
+            setActionStrip(ActionStrip.Builder().apply { stripActions.forEach(::addAction) }.build())
+          }
         }
         .build()
   }

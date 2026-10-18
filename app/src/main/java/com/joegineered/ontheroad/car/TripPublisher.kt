@@ -10,7 +10,6 @@ import androidx.car.app.navigation.model.Destination
 import androidx.car.app.navigation.model.TravelEstimate
 import androidx.car.app.navigation.model.Trip
 import com.stadiamaps.ferrostar.car.app.navigation.TurnByTurnNotificationManager
-import com.stadiamaps.ferrostar.car.app.template.models.toCarDistance
 import com.stadiamaps.ferrostar.car.app.template.models.toCarStep
 import com.stadiamaps.ferrostar.car.app.template.models.toCarTravelEstimate
 import com.stadiamaps.ferrostar.core.NavigationUiState
@@ -119,7 +118,7 @@ class TripPublisher(
             currentStep.drivingSide ?: backupDrivingSide,
             currentStep.roundaboutExitNumber?.toInt(),
         )
-    val tripEstimate = progress.toCarTravelEstimate()
+    val tripEstimate = progress.toCarTravelEstimate().withDistance(carDistance(progress.distanceRemaining))
 
     return Trip.Builder()
         .addStep(step, stepTravelEstimate(progress, currentStep))
@@ -140,7 +139,7 @@ class TripPublisher(
             System.currentTimeMillis() + seconds * 1000,
             TimeZone.getDefault(),
         )
-    return TravelEstimate.Builder(progress.distanceToNextManeuver.toCarDistance(), arrival)
+    return TravelEstimate.Builder(carDistance(progress.distanceToNextManeuver), arrival)
         .setRemainingTimeSeconds(seconds)
         .setRemainingTimeColor(CarColor.GREEN)
         .build()
