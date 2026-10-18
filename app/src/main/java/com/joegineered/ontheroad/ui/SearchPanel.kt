@@ -3,9 +3,12 @@ package com.joegineered.ontheroad.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,6 +37,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -51,8 +55,10 @@ import kotlinx.coroutines.flow.first
 
 /**
  * A search bar for addresses and places. While focused, it lists saved and recent places (empty
- * query) or search results; picking one calls [onPlaceSelected].
+ * query) or search results; picking one calls [onPlaceSelected]. The keyboard can be hidden to see
+ * more of the list, which stays open until the search is cleared or a place is picked.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchPanel(
     onPlaceSelected: (Place) -> Unit,
@@ -60,6 +66,8 @@ fun SearchPanel(
     onActiveChanged: (Boolean) -> Unit = {},
     onChargersNearby: (() -> Unit)? = null,
     maxListHeight: Dp = 320.dp,
+    /** The list's height limit while the keyboard is hidden, when there is room for more. */
+    maxListHeightWithoutKeyboard: Dp = maxListHeight,
     /** Focuses the search bar from outside, e.g. to search for a stop to add. */
     focusRequester: FocusRequester? = null,
     hint: String = stringResource(R.string.search_hint),
@@ -80,6 +88,9 @@ fun SearchPanel(
   var query by remember { mutableStateOf("") }
   var focused by remember { mutableStateOf(false) }
   val focusManager = LocalFocusManager.current
+  val keyboard = LocalSoftwareKeyboardController.current
+  val keyboardVisible = WindowInsets.isImeVisible
+  val listHeight = if (keyboardVisible) maxListHeight else maxOf(maxListHeight, maxListHeightWithoutKeyboard)
 
   fun choose(place: Place) {
     // Before clearing focus, which ends the caller's search mode (such as adding a stop).
@@ -107,18 +118,30 @@ fun SearchPanel(
           placeholder = { Text(hint) },
           leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
           trailingIcon = {
-            if (query.isNotEmpty() || focused) {
-              IconButton(
-                  onClick = {
-                    query = ""
-                    search.clear()
-                    focusManager.clearFocus()
-                  }
-              ) {
-                Icon(
-                    painterResource(R.drawable.ic_close),
-                    contentDescription = stringResource(R.string.clear_search),
-                )
+            Row {
+              // Hides only the keyboard: clearing focus would close the list too. Tapping the
+              // field brings the keyboard back.
+              if (focused && keyboardVisible) {
+                IconButton(onClick = { keyboard?.hide() }) {
+                  Icon(
+                      painterResource(R.drawable.ic_keyboard_hide),
+                      contentDescription = stringResource(R.string.hide_keyboard),
+                  )
+                }
+              }
+              if (query.isNotEmpty() || focused) {
+                IconButton(
+                    onClick = {
+                      query = ""
+                      search.clear()
+                      focusManager.clearFocus()
+                    }
+                ) {
+                  Icon(
+                      painterResource(R.drawable.ic_close),
+                      contentDescription = stringResource(R.string.clear_search),
+                  )
+                }
               }
             }
           },
@@ -168,12 +191,12 @@ fun SearchPanel(
         }
       }
       when {
-        showingRecents && quickPlaces.isNotEmpty() -> QuickPlaceList(quickPlaces, ::choose, maxListHeight)
+        showingRecents && quickPlaces.isNotEmpty() -> QuickPlaceList(quickPlaces, ::choose, listHeight)
         showingRecents -> Unit
         state is SearchState.Results -> {
           val places = (state as SearchState.Results).places
           if (places.isEmpty()) Message(stringResource(R.string.no_results))
-          else PlaceList(places, { R.drawable.ic_place }, ::choose, maxListHeight)
+          else PlaceList(places, { R.drawable.ic_place }, ::choose, listHeight)
         }
         state is SearchState.Offline -> {
           val places = (state as SearchState.Offline).places
@@ -184,7 +207,7 @@ fun SearchPanel(
                 places,
                 { place -> quickPlaces.firstOrNull { it.place == place }.icon() },
                 ::choose,
-                maxListHeight,
+                listHeight,
                 showDivider = false,
             )
           }

@@ -127,6 +127,7 @@
     <string name="speech_rate_fast">Fast</string>
     <string name="search_hint">Search address or place</string>
     <string name="clear_search">Clear search</string>
+    <string name="hide_keyboard">Hide keyboard</string>
     <string name="recent_destinations">Recent</string>
     <string name="no_results">No places found</string>
     <string name="search_failed">Search failed: %1$s</string>

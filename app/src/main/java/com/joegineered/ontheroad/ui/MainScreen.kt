@@ -499,6 +499,8 @@ private fun BrowsingOverlay(
                   onSearchBottomChanged(with(density) { it.boundsInRoot().bottom.toDp() })
                 },
         maxListHeight = if (landscape) 200.dp else 320.dp,
+        // Down to near the bottom of the screen: below the search bar and its margins.
+        maxListHeightWithoutKeyboard = with(density) { boxHeightPx.toDp() } - 120.dp,
         onActiveChanged = {
           searching = it
           if (!it) addingStop = false
