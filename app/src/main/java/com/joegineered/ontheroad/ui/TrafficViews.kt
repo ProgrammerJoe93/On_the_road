@@ -60,6 +60,8 @@ val TrafficEventKind.color: Color
         TrafficEventKind.ROADWORKS -> Color(0xFFF57C00)
         TrafficEventKind.POOR_CONDITIONS -> Color(0xFF1E88E5)
         TrafficEventKind.VERY_POOR_CONDITIONS -> Color(0xFF6A1B9A)
+        TrafficEventKind.SLIPPERY_ROAD -> Color(0xFF0277BD)
+        TrafficEventKind.POOR_VISIBILITY -> Color(0xFF546E7A)
         TrafficEventKind.OTHER -> Color(0xFFFBC02D)
       }
 
@@ -110,7 +112,7 @@ fun TrafficLayer(
     )
   }
 
-  // Icons: closures, incidents, roadworks, road weather.
+  // Icons: closures, incidents, roadworks, road weather, and hazards measured at weather stations.
   val iconFor =
       mapOf(
           R.drawable.map_closure to events.filter { it.kind == TrafficEventKind.ROAD_CLOSED },
@@ -119,6 +121,8 @@ fun TrafficLayer(
           R.drawable.map_roadworks to
               events.filter { it.kind == TrafficEventKind.ROADWORKS || it.kind == TrafficEventKind.OTHER },
           R.drawable.map_road_weather to events.filter { it.isRoadWeather },
+          R.drawable.map_station_slippery to events.filter { it.kind == TrafficEventKind.SLIPPERY_ROAD },
+          R.drawable.map_station_visibility to events.filter { it.kind == TrafficEventKind.POOR_VISIBILITY },
       )
   iconFor.forEach { (iconRes, group) ->
     val points = group.mapNotNull { event -> event.anchor?.let { event to it } }
@@ -201,6 +205,13 @@ fun TrafficCard(item: Any, onClose: () -> Unit, modifier: Modifier = Modifier) {
             val formatted =
                 DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault()).format(end)
             Text(stringResource(R.string.traffic_until, formatted), style = MaterialTheme.typography.bodySmall)
+          }
+          if (item.isWeatherStation) {
+            item.start?.let { measured ->
+              val formatted =
+                  DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault()).format(measured)
+              Text(stringResource(R.string.traffic_measured_at, formatted), style = MaterialTheme.typography.bodySmall)
+            }
           }
         }
         is SlowTraffic -> {

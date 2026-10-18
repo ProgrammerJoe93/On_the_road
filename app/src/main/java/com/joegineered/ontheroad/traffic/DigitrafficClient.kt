@@ -27,6 +27,12 @@ class DigitrafficClient(
 
   suspend fun roadWeatherForecasts(): String = get("/api/weather/v2/forecast-sections-simple/forecasts")
 
+  /** Road weather stations: locations and names (static; about 190 kB). */
+  suspend fun weatherStations(): String = get("/api/weather/v2/stations")
+
+  /** Latest measurements from all road weather stations (about 7 MB, 360 kB gzipped). */
+  suspend fun weatherStationData(): String = get("/api/weather/v2/stations/data")
+
   /** Variable speed limit, warning and message signs, as they show now (about 270 kB). */
   suspend fun variableSigns(): String = get("/api/variable-sign/v1/signs")
 

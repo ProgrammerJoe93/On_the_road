@@ -32,8 +32,8 @@ import kotlinx.coroutines.launch
 import uniffi.ferrostar.TripState
 
 /**
- * Live traffic for Finland from Digitraffic: incidents, closures, roadworks and poor road weather
- * for the map, slow traffic at measuring stations, warnings for events on the route, and closures
+ * Live traffic for Finland from Digitraffic: incidents, closures, roadworks, poor road weather and
+ * hazards measured at road weather stations for the map, slow traffic at measuring stations, warnings for events on the route, and closures
  * for routing to avoid. Refreshes every few minutes while enabled.
  */
 class TrafficController(
@@ -44,7 +44,10 @@ class TrafficController(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
   private val _events = MutableStateFlow<List<TrafficEvent>>(emptyList())
-  /** Active incidents, closures, roadworks and road weather sections with poor conditions. */
+  /**
+   * Active incidents, closures, roadworks, road weather sections with poor conditions, and road
+   * weather stations measuring a slippery road or poor visibility.
+   */
   val events: StateFlow<List<TrafficEvent>> = _events.asStateFlow()
 
   private val _slowTraffic = MutableStateFlow<List<SlowTraffic>>(emptyList())
@@ -81,6 +84,10 @@ class TrafficController(
   private var weatherSectionsLoadedAt = Instant.EPOCH
   private var roadWeather: List<TrafficEvent> = emptyList()
   private var roadWeatherLoadedAt = Instant.EPOCH
+  private var weatherStations: Map<Int, WeatherStation> = emptyMap()
+  private var weatherStationsLoadedAt = Instant.EPOCH
+  private var stationHazards: List<TrafficEvent> = emptyList()
+  private var stationHazardsLoadedAt = Instant.EPOCH
   private val reroutedFor = mutableSetOf<String>()
   private var started = false
 
@@ -101,7 +108,7 @@ class TrafficController(
    * out: it is similar on alternative routes, and would outnumber the incidents in winter.
    */
   fun eventsOnRoute(route: List<LatLng>): List<TrafficEvent> =
-      eventsNearRoute(route, _events.value.filterNot { it.isRoadWeather })
+      eventsNearRoute(route, _events.value.filterNot { it.isRoadWeather || it.isWeatherStation })
 
   fun select(item: Any?) {
     _selected.value = item
@@ -120,6 +127,8 @@ class TrafficController(
         _slowTraffic.value = emptyList()
         roadWeather = emptyList()
         roadWeatherLoadedAt = Instant.EPOCH
+        stationHazards = emptyList()
+        stationHazardsLoadedAt = Instant.EPOCH
         return@collectLatest
       }
       while (true) {
@@ -145,8 +154,9 @@ class TrafficController(
     }
     val slow = async { DigitrafficParser.parseSlowTraffic(client.stationData(), stations, SLOW_PERCENT) }
     val weather = async { loadRoadWeather(now) }
+    val measured = async { loadStationHazards(now) }
     // Road weather first, so that incidents are drawn above its long stretches.
-    _events.value = weather.await() + announcements.await() + roadworks.await()
+    _events.value = weather.await() + measured.await() + announcements.await() + roadworks.await()
     _slowTraffic.value = slow.await()
     Log.i(TAG, "${_events.value.size} traffic events, ${_slowTraffic.value.size} slow stations")
   }
@@ -170,6 +180,26 @@ class TrafficController(
       Log.w(TAG, "Road weather refresh failed", e)
     }
     return roadWeather
+  }
+
+  /** Hazards measured at road weather stations; like road weather, a failure keeps the last ones. */
+  private suspend fun loadStationHazards(now: Instant): List<TrafficEvent> {
+    if (now.isBefore(stationHazardsLoadedAt.plusSeconds(STATION_HAZARDS_TTL.inWholeSeconds))) return stationHazards
+    try {
+      if (weatherStations.isEmpty() || now.isAfter(weatherStationsLoadedAt.plusSeconds(STATIONS_TTL.inWholeSeconds))) {
+        weatherStations = DigitrafficParser.parseWeatherStations(client.weatherStations())
+        weatherStationsLoadedAt = now
+      }
+      stationHazards = DigitrafficParser.parseWeatherStationHazards(client.weatherStationData(), weatherStations, now)
+      stationHazardsLoadedAt = now
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Log.w(TAG, "Road weather station refresh failed", e)
+    }
+    // Readings go out of date quickly; don't keep showing old ones while refreshes fail.
+    val oldest = now.minusSeconds(STATION_HAZARD_MAX_AGE.inWholeSeconds)
+    return stationHazards.filter { it.start?.isBefore(oldest) != true }
   }
 
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -230,6 +260,9 @@ class TrafficController(
     val REFRESH_INTERVAL = 5.minutes
     val STATIONS_TTL = 24.hours
     val ROAD_WEATHER_TTL = 15.minutes
+    /** Stations measure every few minutes, but their data is large (about 360 kB compressed). */
+    val STATION_HAZARDS_TTL = 10.minutes
+    val STATION_HAZARD_MAX_AGE = 1.hours
     /** Below this share of free-flow speed, traffic counts as slow (Fintraffic's "slow" class). */
     const val SLOW_PERCENT = 75.0
     const val MIN_REROUTE_DISTANCE = 500.0

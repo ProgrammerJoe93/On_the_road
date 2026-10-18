@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for a slippery road measured at a road weather station: white snowflake on a blue
+     circle (a circle, unlike the triangles for forecasts and reports, as it is a measurement). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp" android:height="26dp" android:viewportWidth="26" android:viewportHeight="26">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M13,0.5a12.5,12.5 0,1 1,-0.001 0z" />
+    <path android:fillColor="#FF0277BD" android:pathData="M13,2.5a10.5,10.5 0,1 1,-0.001 0z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M13,7V19M7.8,10L18.2,16M7.8,16L18.2,10" />
+</vector>

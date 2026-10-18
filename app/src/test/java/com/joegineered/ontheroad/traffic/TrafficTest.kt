@@ -272,7 +272,7 @@ class TrafficTest {
     val icy = events.getValue("weather-00001_001_000_0")
     assertEquals(TrafficEventKind.POOR_CONDITIONS, icy.kind) // the forecast nearest now, not the 4h one
     assertEquals("Vt 1: Helsinki - Kehä III", icy.title)
-    assertEquals(listOf("Partly icy", "Road surface -1 °C"), icy.restrictions)
+    assertEquals(listOf("Partly icy", "Road surface -1\u00A0°C"), icy.restrictions)
     assertTrue(icy.slippery)
     assertTrue(icy.isRoadWeather)
     val wet = events.getValue("weather-00001_002_000_0")
@@ -306,5 +306,97 @@ class TrafficTest {
     assertEquals("very poor", engine.roadWeatherAt(9_000.0)?.id) // the worse of the two
     assertNull(engine.update(14_000.0).active)
     assertNull(engine.roadWeatherAt(15_000.0))
+  }
+
+  // Shapes taken from Digitraffic's road weather station responses (trimmed).
+  private val weatherStations =
+      """
+      {"type":"FeatureCollection","features":[
+        {"type":"Feature","id":1001,"geometry":{"type":"Point","coordinates":[24.596399,60.228227,0.0]},
+         "properties":{"id":1001,"name":"vt1_Espoo_Nupuri","collectionStatus":"GATHERING","state":"OK"}},
+        {"type":"Feature","id":1002,"geometry":{"type":"Point","coordinates":[24.6,60.3,0.0]},
+         "properties":{"id":1002,"name":"Kuusamo_LA12","collectionStatus":"GATHERING"}},
+        {"type":"Feature","id":1003,"geometry":{"type":"Point","coordinates":[24.7,60.4,0.0]},
+         "properties":{"id":1003,"name":"kt75_Nilsiä_Suholanmäki","collectionStatus":"REMOVED_TEMPORARILY"}},
+        {"type":"Feature","id":1004,"geometry":{"type":"Point","coordinates":[24.8,60.5,0.0]},
+         "properties":{"id":1004,"name":"vt9_Tuusniemi_Tuusjärvi","collectionStatus":"GATHERING"}},
+        {"type":"Feature","id":1005,"geometry":{"type":"Point","coordinates":[24.9,60.6,0.0]},
+         "properties":{"id":1005,"name":"st863_Posio_Sirniö","collectionStatus":"GATHERING"}}
+      ]}
+      """
+
+  private fun sensor(name: String, value: Double, time: String = "2026-10-16T21:50:00Z") =
+      """{"id":1,"stationId":1,"name":"$name","measuredTime":"$time","unit":"","value":$value}"""
+
+  private fun station(id: Int, vararg sensors: String) =
+      """{"id":$id,"dataUpdatedTime":"2026-10-16T21:51:00Z","sensorValues":[${sensors.joinToString(",")}]}"""
+
+  private val weatherStationData =
+      """
+      {"dataUpdatedTime":"2026-10-16T21:51:00Z","stations":[
+        ${station(1001, sensor("TIE_1", -0.3), sensor("KELI_1", 7.0), sensor("VAROITUS_1", 2.0), sensor("TIE_2", 0.4), sensor("KELI_2", 8.0), sensor("NÄKYVYYS_M", 2000.0))},
+        ${station(1002, sensor("TIE_1", -1.4), sensor("KELI_1", 2.0), sensor("VAROITUS_1", 1.0), sensor("NÄKYVYYS_M", 120.0))},
+        ${station(1003, sensor("KELI_1", 7.0))},
+        ${station(1004, sensor("TIE_1", -1.0), sensor("KELI_1", 3.0), sensor("KITKA1", 0.32), sensor("SATEEN_OLOMUOTO_PWDXX", 19.0))},
+        ${station(1005, sensor("TIE_1", -3.0, "2026-10-16T19:00:00Z"), sensor("KELI_1", 7.0, "2026-10-16T19:00:00Z"))}
+      ]}
+      """
+
+  @Test
+  fun `road weather stations measuring a slippery road or poor visibility become events`() {
+    val stations = DigitrafficParser.parseWeatherStations(weatherStations)
+    assertEquals(setOf(1001, 1002, 1004, 1005), stations.keys) // 1003 is not collecting
+    assertEquals("Vt 1, Espoo, Nupuri", stations.getValue(1001).name)
+    assertEquals("Kuusamo, LA12", stations.getValue(1002).name)
+
+    val events = DigitrafficParser.parseWeatherStationHazards(weatherStationData, stations, now).associateBy { it.id }
+
+    // 1002's road is only moist below freezing, which is too common to warn about; 1005's readings
+    // are hours old.
+    assertEquals(setOf("station-slippery-1001", "station-visibility-1002", "station-slippery-1004"), events.keys)
+    val icy = events.getValue("station-slippery-1001")
+    assertEquals(TrafficEventKind.SLIPPERY_ROAD, icy.kind)
+    assertEquals(listOf("Icy road", "Slippery road warning", "Road surface 0\u00A0°C"), icy.restrictions)
+    assertEquals("Vt 1, Espoo, Nupuri", icy.title)
+    assertEquals(Instant.parse("2026-10-16T21:50:00Z"), icy.start)
+    assertEquals(listOf(LatLng(60.228227, 24.596399)), icy.lines.single())
+    assertTrue(icy.slippery)
+    assertTrue(icy.isWeatherStation)
+    assertFalse(icy.isRoadWeather)
+    assertEquals(listOf("Visibility 120 m"), events.getValue("station-visibility-1002").restrictions)
+    assertEquals(
+        listOf("Wet road below freezing", "Low grip (friction 0.32)", "Freezing rain", "Road surface -1\u00A0°C"),
+        events.getValue("station-slippery-1004").restrictions,
+    )
+  }
+
+  @Test
+  fun `slippery stations are warned about once per stretch, and not inside a slippery forecast`() {
+    val engine = TrafficAlertEngine()
+    val route = northboundRoute(80_000)
+    val stretch = { from: Double, to: Double -> (from.toInt()..to.toInt() step 250).map { at(it.toDouble(), east = 60.0) } }
+    val slipperyForecast =
+        event("forecast", TrafficEventKind.POOR_CONDITIONS, *stretch(3_000.0, 8_000.0).toTypedArray()).copy(slippery = true)
+    engine.setEvents(
+        engine.match(
+            route,
+            listOf(
+                slipperyForecast,
+                event("inside forecast", TrafficEventKind.SLIPPERY_ROAD, at(5_000.0, east = 50.0)),
+                event("first", TrafficEventKind.SLIPPERY_ROAD, at(20_000.0, east = 50.0)),
+                event("repeat", TrafficEventKind.SLIPPERY_ROAD, at(30_000.0, east = -50.0)),
+                event("fog", TrafficEventKind.POOR_VISIBILITY, at(32_000.0, east = 50.0)),
+                event("after a gap", TrafficEventKind.SLIPPERY_ROAD, at(60_000.0, east = 50.0)),
+                // On a road some way off the route.
+                event("off route", TrafficEventKind.SLIPPERY_ROAD, at(70_000.0, east = 300.0)),
+            ),
+        )
+    )
+
+    assertEquals("forecast", engine.update(2_000.0).announce?.event?.id)
+    assertEquals("first", engine.update(18_500.0).announce?.event?.id)
+    assertEquals("fog", engine.update(30_500.0).announce?.event?.id)
+    assertEquals("after a gap", engine.update(58_500.0).announce?.event?.id)
+    assertNull(engine.update(68_500.0).active)
   }
 }

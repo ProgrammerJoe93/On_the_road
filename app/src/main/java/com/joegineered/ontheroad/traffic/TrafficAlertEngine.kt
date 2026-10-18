@@ -28,9 +28,14 @@ class TrafficAlertEngine(
     private val closureWarningDistanceMetres: Double = 5_000.0,
     /** Road weather sections have coarse, rounded coordinates, so they get more slack. */
     private val roadWeatherOffsetMetres: Double = 100.0,
+    /** Road weather stations stand beside the road, often some way off its centre line. */
+    private val weatherStationOffsetMetres: Double = 75.0,
 ) {
   private var events: List<RouteTrafficEvent> = emptyList()
-  /** Road weather stretches that continue one already warned about, so need no new warning. */
+  /**
+   * Road weather stretches that continue one already warned about, and station hazards that repeat
+   * one, so need no new warning.
+   */
   private var continuations: Set<String> = emptySet()
   private val announced = mutableSetOf<String>()
 
@@ -40,7 +45,12 @@ class TrafficAlertEngine(
     val index = PolylineIndex(route)
     return candidates
         .mapNotNull { event ->
-          val maxOffset = if (event.isRoadWeather) roadWeatherOffsetMetres else maxOffsetMetres
+          val maxOffset =
+              when {
+                event.isRoadWeather -> roadWeatherOffsetMetres
+                event.isWeatherStation -> weatherStationOffsetMetres
+                else -> maxOffsetMetres
+              }
           val onRoute =
               event.lines.flatten()
                   .filter { index.isNear(it, maxOffset) } // cheap check before projecting
@@ -72,6 +82,22 @@ class TrafficAlertEngine(
         continuing += event.event.id
       }
       if (last == null || event.endAlongRouteMetres > last.endAlongRouteMetres) previous = event
+    }
+    // In a cold spell many stations on a route measure a slippery road. Warn about the first, and
+    // again only after a stretch without; a slippery forecast stretch has been warned about already.
+    val slipperyForecasts = events.filter { it.event.isRoadWeather && it.event.slippery }
+    events.filter { it.event.isWeatherStation }.groupBy { it.event.kind }.values.forEach { hazards ->
+      var lastAlong: Double? = null
+      for (hazard in hazards) {
+        val along = hazard.alongRouteMetres
+        if (
+            lastAlong?.let { along - it <= STATION_REPEAT_METRES } == true ||
+                (hazard.event.kind == TrafficEventKind.SLIPPERY_ROAD && slipperyForecasts.any { it.contains(along) })
+        ) {
+          continuing += hazard.event.id
+        }
+        lastAlong = along
+      }
     }
     continuations = continuing
   }
@@ -115,5 +141,6 @@ class TrafficAlertEngine(
     const val INSIDE_MARGIN_METRES = 50.0
     const val MIN_ROAD_WEATHER_METRES = 300.0
     const val ROAD_WEATHER_GAP_METRES = 1_000.0
+    const val STATION_REPEAT_METRES = 15_000.0
   }
 }

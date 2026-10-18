@@ -40,6 +40,8 @@ An open-source Android map and turn-by-turn navigation app with Android Auto sup
   - accidents, closures and roadworks on the map, with Finnish details and English summaries;
   - poor and very poor driving conditions on main roads, from Fintraffic's road weather
     forecasts, with a slippery road (or general danger) sign while you drive through them;
+  - slippery roads (ice, snow, frost, freezing rain, low grip) and poor visibility measured at
+    road weather stations, with a warning ahead on your route;
   - slow traffic at measuring stations;
   - variable road signs on your route, matched to your direction of travel: variable speed
     limits replace the mapped limit, warning signs show beside it after you pass them, and

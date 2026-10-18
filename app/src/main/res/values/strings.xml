@@ -48,6 +48,8 @@
     <string name="traffic_roadworks">Roadworks</string>
     <string name="traffic_poor_conditions">Poor driving conditions</string>
     <string name="traffic_very_poor_conditions">Very poor driving conditions</string>
+    <string name="traffic_slippery_road">Slippery road</string>
+    <string name="traffic_poor_visibility">Poor visibility</string>
     <string name="traffic_notice">Traffic notice</string>
     <string name="traffic_ahead_in">%1$s in %2$s</string>
     <string name="voice_accident_ahead">Accident ahead.</string>
@@ -56,10 +58,13 @@
     <string name="voice_roadworks_ahead">Roadworks ahead.</string>
     <string name="voice_poor_conditions_ahead">Poor driving conditions ahead.</string>
     <string name="voice_very_poor_conditions_ahead">Very poor driving conditions ahead.</string>
+    <string name="voice_slippery_road_ahead">Slippery road ahead.</string>
+    <string name="voice_poor_visibility_ahead">Poor visibility ahead.</string>
     <string name="voice_traffic_notice_ahead">Traffic notice ahead.</string>
     <string name="slow_traffic">Slow traffic</string>
     <string name="slow_traffic_direction">Direction %1$d: %2$d%% of normal speed (%3$d km/h)</string>
     <string name="traffic_until">Until %1$s</string>
+    <string name="traffic_measured_at">Measured at a road weather station at %1$s</string>
     <string name="warning_sign_congestion">Congestion</string>
     <string name="warning_sign_uneven_road">Uneven road</string>
     <string name="warning_sign_loose_gravel">Loose gravel</string>

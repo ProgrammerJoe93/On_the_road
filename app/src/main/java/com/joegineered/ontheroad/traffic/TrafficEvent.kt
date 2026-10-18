@@ -12,12 +12,16 @@ enum class TrafficEventKind {
   POOR_CONDITIONS,
   /** Very poor driving conditions ("erittäin huono ajokeli"). */
   VERY_POOR_CONDITIONS,
+  /** Measured at a road weather station: ice, snow, slush, frost or freezing rain on the road. */
+  SLIPPERY_ROAD,
+  /** Measured at a road weather station: fog or heavy snowfall. */
+  POOR_VISIBILITY,
   OTHER,
 }
 
 /**
- * A traffic announcement, roadwork or stretch of poor road weather from Fintraffic's Digitraffic
- * service. Texts are Finnish, as published; [kind] and [restrictions] are in English for the UI
+ * A traffic announcement, roadwork, stretch of poor road weather or road weather station reading
+ * from Fintraffic's Digitraffic service. Texts are Finnish, as published; [kind] and [restrictions] are in English for the UI
  * and voice.
  */
 data class TrafficEvent(
@@ -31,6 +35,7 @@ data class TrafficEvent(
     val lines: List<List<LatLng>>,
     /** English summaries such as "Single lane closed" or "Speed limit 50 km/h". */
     val restrictions: List<String>,
+    /** When it started; for road weather stations, when it was measured. */
     val start: Instant?,
     val end: Instant?,
     /** Road weather only: the road is icy, snowy, slushy or frosty. */
@@ -41,6 +46,10 @@ data class TrafficEvent(
 
   val isRoadWeather: Boolean
     get() = kind == TrafficEventKind.POOR_CONDITIONS || kind == TrafficEventKind.VERY_POOR_CONDITIONS
+
+  /** A hazard measured at a road weather station, rather than forecast or reported. */
+  val isWeatherStation: Boolean
+    get() = kind == TrafficEventKind.SLIPPERY_ROAD || kind == TrafficEventKind.POOR_VISIBILITY
 
   /** A point to place the icon: the middle of the affected stretch. */
   val anchor: LatLng?

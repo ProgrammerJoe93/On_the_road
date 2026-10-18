@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Map marker for poor visibility measured at a road weather station: white fog lines on a grey
+     circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp" android:height="26dp" android:viewportWidth="26" android:viewportHeight="26">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M13,0.5a12.5,12.5 0,1 1,-0.001 0z" />
+    <path android:fillColor="#FF546E7A" android:pathData="M13,2.5a10.5,10.5 0,1 1,-0.001 0z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round"
+        android:pathData="M7.5,9.5H18.5M6.5,13H19.5M7.5,16.5H18.5" />
+</vector>

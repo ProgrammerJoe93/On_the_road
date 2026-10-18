@@ -3,6 +3,7 @@ package com.joegineered.ontheroad.traffic
 import com.joegineered.ontheroad.cameras.LatLng
 import com.joegineered.ontheroad.cameras.distanceMetres
 import java.time.Instant
+import java.util.Locale
 import kotlin.math.abs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -181,7 +182,7 @@ object DigitrafficParser {
           restrictions =
               listOfNotNull(
                   ROAD_CONDITION_LABELS[roadCondition],
-                  roadTemperature?.let { "Road surface ${Math.round(it)} °C" },
+                  roadTemperature?.let(::roadSurfaceLabel),
               ),
           start = null,
           end = null,
@@ -189,6 +190,95 @@ object DigitrafficParser {
       )
     }
   }
+
+  /** Road weather stations still collecting data (`/api/weather/v2/stations`), by id. */
+  fun parseWeatherStations(body: String): Map<Int, WeatherStation> {
+    val features = json.parseToJsonElement(body).jsonObject["features"] as? JsonArray ?: return emptyMap()
+    return features.mapNotNull { f ->
+      val obj = f as? JsonObject ?: return@mapNotNull null
+      val props = obj["properties"] as? JsonObject ?: return@mapNotNull null
+      if (props.string("collectionStatus") != "GATHERING") return@mapNotNull null
+      val id = props["id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+      val point = parseGeometry(obj["geometry"] as? JsonObject).flatten().firstOrNull() ?: return@mapNotNull null
+      id to WeatherStation(id, props.string("name")?.let(::stationName).orEmpty(), point)
+    }.toMap()
+  }
+
+  /**
+   * Hazards measured at road weather stations (`/api/weather/v2/stations/data`): a slippery road
+   * (ice, snow, slush or frost on it, the station's own slipperiness or frost warning, freezing
+   * rain, low grip, or a wet road below freezing) and poor visibility. Readings older than
+   * [MAX_STATION_READING_AGE_SECONDS] are ignored, as the station may have stopped reporting.
+   */
+  fun parseWeatherStationHazards(body: String, stations: Map<Int, WeatherStation>, now: Instant): List<TrafficEvent> {
+    val list = json.parseToJsonElement(body).jsonObject["stations"] as? JsonArray ?: return emptyList()
+    return list.flatMap { element ->
+      val obj = element as? JsonObject ?: return@flatMap emptyList()
+      val station = obj["id"]?.jsonPrimitive?.intOrNull?.let { stations[it] } ?: return@flatMap emptyList()
+      val readings =
+          (obj["sensorValues"] as? JsonArray).orEmpty().mapNotNull { v ->
+            val sensor = v as? JsonObject ?: return@mapNotNull null
+            val name = sensor.string("name")?.takeIf { it in STATION_SENSORS } ?: return@mapNotNull null
+            val value = sensor["value"]?.jsonPrimitive?.doubleOrNull ?: return@mapNotNull null
+            val measured = sensor.instant("measuredTime") ?: return@mapNotNull null
+            if (measured.isBefore(now.minusSeconds(MAX_STATION_READING_AGE_SECONDS))) return@mapNotNull null
+            name to StationReading(value, measured)
+          }.toMap()
+      stationHazards(station, readings)
+    }
+  }
+
+  private data class StationReading(val value: Double, val measured: Instant)
+
+  private fun stationHazards(station: WeatherStation, readings: Map<String, StationReading>): List<TrafficEvent> {
+    fun value(name: String) = readings[name]?.value
+    // Stations have one or two road sensors, usually one per direction.
+    val sensors = listOf(1, 2)
+    val roadTemperature = sensors.mapNotNull { value("TIE_$it") }.minOrNull()
+
+    val slippery = buildList {
+      sensors.forEach { n ->
+        val surface = value("KELI_$n")?.toInt()
+        STATION_SURFACE_LABELS[surface]?.let(::add)
+        if (surface == SURFACE_WET && value("TIE_$n")?.let { it <= 0.0 } == true) add("Wet road below freezing")
+        STATION_WARNING_LABELS[value("VAROITUS_$n")?.toInt()]?.let(::add)
+        value("KITKA$n")?.takeIf { it > 0.0 && it < LOW_FRICTION }?.let { add("Low grip (friction %.2f)".format(Locale.ROOT, it)) }
+      }
+      FREEZING_PRECIPITATION_LABELS[value("SATEEN_OLOMUOTO_PWDXX")?.toInt()]?.let(::add)
+    }.distinct()
+    val visibility = value("NÄKYVYYS_M")?.takeIf { it > 0.0 && it < POOR_VISIBILITY_METRES }
+
+    val measured = readings.values.maxOfOrNull { it.measured }
+    fun hazard(kind: TrafficEventKind, idPrefix: String, details: List<String>) =
+        TrafficEvent(
+            id = "$idPrefix-${station.id}",
+            kind = kind,
+            title = station.name,
+            description = null,
+            lines = listOf(listOf(station.position)),
+            restrictions = details,
+            start = measured,
+            end = null,
+            slippery = kind == TrafficEventKind.SLIPPERY_ROAD,
+        )
+    return listOfNotNull(
+        slippery.takeIf { it.isNotEmpty() }?.let {
+          hazard(TrafficEventKind.SLIPPERY_ROAD, "station-slippery", it + listOfNotNull(roadTemperature?.let(::roadSurfaceLabel)))
+        },
+        visibility?.let { hazard(TrafficEventKind.POOR_VISIBILITY, "station-visibility", listOf("Visibility ${Math.round(it)} m")) },
+    )
+  }
+
+  /** "vt1_Espoo_Nupuri" as "Vt 1, Espoo, Nupuri". */
+  private fun stationName(name: String): String =
+      name.split('_').filter { it.isNotBlank() }.mapIndexed { i, part ->
+        val road = STATION_ROAD.matchEntire(part)
+        if (i == 0 && road != null) "${road.groupValues[1].lowercase().replaceFirstChar { it.uppercase() }} ${road.groupValues[2]}"
+        else part
+      }.joinToString(", ")
+
+  /** With a no-break space, so that "°C" doesn't wrap onto a line of its own. */
+  private fun roadSurfaceLabel(celsius: Double) = "Road surface ${Math.round(celsius)}\u00A0°C"
 
   /**
    * Variable signs (`/api/variable-sign/v1/signs`) as they show now. Blank warning and message
@@ -352,7 +442,34 @@ object DigitrafficParser {
           "SNOW" to "Snowy road",
       )
   private val SLIPPERY_CONDITIONS = setOf("SLUSH", "FROST", "PARTLY_ICY", "ICE", "SNOW")
+
+  /** Road weather station sensors that hazards are read from. */
+  private val STATION_SENSORS =
+      setOf(
+          "TIE_1", "TIE_2", "KELI_1", "KELI_2", "VAROITUS_1", "VAROITUS_2", "KITKA1", "KITKA2",
+          "SATEEN_OLOMUOTO_PWDXX", "NÄKYVYYS_M",
+      )
+  /** Main road classes in station names: "vt1" is highway 1 ("valtatie"). */
+  private val STATION_ROAD = Regex("^(vt|kt|st|mt|yt)(\\d+)$", RegexOption.IGNORE_CASE)
+  private const val MAX_STATION_READING_AGE_SECONDS = 3_600L
+
+  /** Road surface states (`KELI_n`) that make the road slippery; 3 is wet, 4 wet and salted. */
+  private val STATION_SURFACE_LABELS = mapOf(5 to "Frost", 6 to "Snowy road", 7 to "Icy road", 9 to "Slushy road")
+  private const val SURFACE_WET = 3
+
+  /** The station's own warnings (`VAROITUS_n`); 1, "beware", is too common to warn about. */
+  private val STATION_WARNING_LABELS = mapOf(2 to "Slippery road warning", 3 to "Frost warning")
+
+  /** Precipitation types (`SATEEN_OLOMUOTO_PWDXX`) that freeze on the road. */
+  private val FREEZING_PRECIPITATION_LABELS = mapOf(18 to "Freezing drizzle", 19 to "Freezing rain")
+
+  /** Dry asphalt measures about 0.8; snow and ice are 0.1–0.4. */
+  private const val LOW_FRICTION = 0.4
+  private const val POOR_VISIBILITY_METRES = 200.0
 }
+
+/** A road weather station, e.g. "Vt 1, Espoo, Nupuri". */
+data class WeatherStation(val id: Int, val name: String, val position: LatLng)
 
 /** A main road stretch that Fintraffic gives road weather forecasts for. */
 data class RoadWeatherSection(val id: String, val description: String?, val lines: List<List<LatLng>>)
